@@ -10,17 +10,33 @@ The agent dynamically generates questions, selects reviewers, and drives workflo
 pi install git:github.com/tmdgusya/pi-engineering-discipline-extension
 ```
 
+## Setup (Required)
+
+> **After installing, run `/setup` first.** This is not optional.
+
+```bash
+/setup
+```
+
+`/setup` configures `quietStartup: true` in `~/.pi/agent/settings.json` so the extension's custom ROACH PI banner replaces the default startup listing. Without this, you'll see redundant startup output.
+
 > ⚠️ **If you have the `superpowers` skill installed, remove it before using this extension.** The `superpowers` skill conflicts with this extension's bundled skills (e.g., `agentic-clarification`, `agentic-plan-crafting`, `agentic-karpathy`). Duplicate skill names can cause unexpected behavior since skill loading does not guarantee extension override.
+
+## Why ROACH PI?
+
+- **Fully open source** — Every line is on GitHub. No hidden prompts, no secret system instructions, no obfuscated behavior. Read the [source](https://github.com/tmdgusya/roach-pi) and see exactly what the agent does.
+- **Observable** — The footer displays prompt cache hit rate in real time. See how your context is being utilized, session by session.
+- **Transparent by design** — Tools, event hooks, skill injections, and agent prompts are all plain TypeScript and Markdown. No magic.
 
 ## Features
 
 ### Commands
+- **`/setup`**: **Run this first.** Configures `quietStartup: true` and sets up the ROACH PI banner.
 - **`/clarify`**: The agent asks dynamic, context-aware questions one at a time to resolve ambiguity. It generates questions and choices on the fly based on your request, while exploring the codebase via subagents in parallel. Ends with a structured Context Brief.
 - **`/plan`**: Delegates to the agent in strict agentic-plan-crafting mode, ensuring executable implementation plans with no placeholders.
 - **`/ultraplan`**: The agent dispatches all 5 reviewer perspectives (Feasibility, Architecture, Risk, Dependency, User Value) in parallel via the subagent tool, then synthesizes findings into a milestone DAG.
 - **`/ask`**: Manual test command for the `ask_user_question` tool.
 - **`/reset-phase`**: Resets the workflow phase to idle.
-- **`/setup`**: Configures recommended settings — sets `quietStartup: true` in `~/.pi/agent/settings.json`.
 
 ### Tools
 - **`ask_user_question`**: The agent calls this autonomously whenever it encounters ambiguity — generating questions and choices dynamically based on context.
@@ -57,15 +73,16 @@ Agent locations:
 - **User agents**: `~/.pi/agent/agents/*.md`
 - **Project agents**: `.pi/agents/*.md` (overrides user agents of the same name)
 
-## Recommended Settings
+## Observability
 
-Add `"quietStartup": true` to `~/.pi/agent/settings.json` to hide the default Skills/Extensions/Themes listing at startup. The extension provides its own custom ROACH PI banner via `setHeader`, so the built-in listing is redundant and clutters the screen.
+The footer displays real-time metrics during every session:
 
-```json
-{
-  "quietStartup": true
-}
-```
+- **Cache hit rate** — prompt cache utilization per session
+- **Context usage bar** — how much of the context window is used
+- **Active tools** — which tools are currently running
+- **Branch, model, directory** — at a glance
+
+Everything the agent does is inspectable. No hidden behavior.
 
 ## Development
 
@@ -88,6 +105,10 @@ npm test
 ```
 
 32 tests covering tool registration, command delegation, event handlers, ask_user_question behavior, agent discovery, subagent execution helpers, and concurrency control.
+
+## Open Source
+
+This project is [MIT licensed](https://github.com/tmdgusya/roach-pi/blob/main/LICENSE). Every component — tools, agents, skills, event hooks — is open source and auditable. [Read the source](https://github.com/tmdgusya/roach-pi).
 
 ## Contributing
 
