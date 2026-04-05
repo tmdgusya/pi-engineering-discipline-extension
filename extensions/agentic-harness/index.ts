@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { keyHint, keyText, rawKeyHint } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { RoachFooter, type CacheStats, type ActiveTools } from "./footer.js";
 import { homedir } from "os";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -35,6 +36,12 @@ let activeGoalDocument: string | null = null;
 
 // State file path
 const STATE_FILE = join(homedir(), ".pi", "extension-state.json");
+
+// Cache hit rate tracking (accumulated per session)
+const cacheStats: CacheStats = { totalInput: 0, totalCacheRead: 0 };
+
+// Active tool execution tracking
+const activeTools: ActiveTools = { running: new Map() };
 
 export default function (pi: ExtensionAPI) {
   const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -649,40 +656,6 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ============================================================
-  // /ask — manual test command for ask_user_question
-  // ============================================================
-
-  pi.registerCommand("ask", {
-    description: "Ask the user a question (for testing the ask_user_question tool)",
-    handler: async (args, ctx) => {
-      const question = await ctx.ui.input(
-        "Enter a question",
-        args || "What would you like to know?"
-      );
-      if (!question) return;
-
-      const choicesStr = await ctx.ui.input(
-        "Enter comma-separated choices (leave empty for free text)",
-        ""
-      );
-      const choices = choicesStr
-        ? choicesStr.split(",").map((s) => s.trim()).filter(Boolean)
-        : undefined;
-
-      let answer: string | undefined;
-      if (choices && choices.length > 0) {
-        answer = await ctx.ui.select(question, choices);
-      } else {
-        answer = await ctx.ui.input(question);
-      }
-
-      if (answer !== undefined) {
-        ctx.ui.notify(`Answer: ${answer}`, "info");
-      }
-    },
-  });
-
-  // ============================================================
   // /reset-phase — reset workflow phase to idle
   // ============================================================
 
@@ -701,10 +674,46 @@ export default function (pi: ExtensionAPI) {
   // Session start notification
   // ============================================================
 
+  // ============================================================
+  // message_end: Track cache hit rate
+  // ============================================================
+
+  pi.on("message_end", async (event, _ctx) => {
+    const msg = event.message;
+    if (msg.role === "assistant") {
+      const usage = msg.usage;
+      if (usage) {
+        cacheStats.totalInput += usage.input;
+        cacheStats.totalCacheRead += usage.cacheRead;
+      }
+    }
+  });
+
+  // ============================================================
+  // Tool execution tracking
+  // ============================================================
+
+  pi.on("tool_execution_start", async (event, _ctx) => {
+    activeTools.running.set(event.toolCallId, event.toolName);
+  });
+
+  pi.on("tool_execution_end", async (event, _ctx) => {
+    activeTools.running.delete(event.toolCallId);
+  });
+
+  // ============================================================
+  // Session start: header + footer + state restore
+  // ============================================================
+
   pi.on("session_start", async (_event, ctx) => {
     const saved = await loadState(STATE_FILE);
     currentPhase = saved.phase;
     activeGoalDocument = saved.activeGoalDocument;
+
+    // Reset stats for new session
+    cacheStats.totalInput = 0;
+    cacheStats.totalCacheRead = 0;
+    activeTools.running.clear();
 
     // Custom header: ROACH PI ASCII art banner
     ctx.ui.setHeader((_tui, theme) => {
@@ -731,8 +740,17 @@ export default function (pi: ExtensionAPI) {
       return new Text(`\n${banner}\n${tagline}\n\n${hints}`, 1, 0);
     });
 
+    // Custom footer: dir │ branch │ model │ context bar │ cache hit rate
+    ctx.ui.setFooter((_tui, theme, footerData) => {
+      return new RoachFooter(theme, footerData, {
+        cwd: ctx.cwd,
+        getModelName: () => ctx.model?.name,
+        getContextUsage: () => ctx.getContextUsage(),
+      }, cacheStats, activeTools);
+    });
+
     ctx.ui.notify(
-      "Agentic Harness loaded: /clarify, /plan, /ultraplan, /ask, /reset-phase",
+      "Agentic Harness loaded: /clarify, /plan, /ultraplan, /reset-phase",
       "info"
     );
   });
