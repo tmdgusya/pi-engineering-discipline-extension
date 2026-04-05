@@ -37,6 +37,7 @@
     <div class="container">
       <ul>
         <li><a href="#install">★ <span data-lang="en">Install</span><span data-lang="ko">설치</span></a></li>
+        <li><a href="#why">● <span data-lang="en">Why ROACH PI?</span><span data-lang="ko">왜 ROACH PI?</span></a></li>
         <li><a href="#quickstart">▶ <span data-lang="en">Quick Start</span><span data-lang="ko">빠른 시작</span></a></li>
         <li><a href="#features">■ <span data-lang="en">Features</span><span data-lang="ko">기능</span></a></li>
         <li><a href="#faq">● <span data-lang="en">FAQ</span><span data-lang="ko">FAQ</span></a></li>
@@ -106,19 +107,102 @@
         </a>
       </div>
 
-      <div class="card" style="margin-top: 1rem;">
+      <div class="card card-blue" style="margin-top: 1.5rem;">
         <h3 style="margin-bottom: 0.75rem;">
           <span class="icon">★</span>
-          <span data-lang="en">Recommended Setting</span>
-          <span data-lang="ko">권장 설정</span>
+          <span data-lang="en">Setup (Required)</span>
+          <span data-lang="ko">설치 (필수)</span>
         </h3>
         <p data-lang="en">
-          After installing, run <code>/setup</code> in pi to configure <code>quietStartup: true</code> in <code>~/.pi/agent/settings.json</code>. This hides the default startup listing — the extension provides its own custom ROACH PI banner.
+          After installing, <strong>run <code>/setup</code> first</strong>. This is not optional.
         </p>
         <p data-lang="ko">
-          설치 후 pi에서 <code>/setup</code>을 실행하여 <code>~/.pi/agent/settings.json</code>에 <code>quietStartup: true</code>를 설정하세요. 기본 시작 목록을 숨기고 익스텐션이 자체 ROACH PI 배너를 제공합니다.
+          설치 후 <strong>반드시 <code>/setup</code>을 먼저 실행하세요</strong>. 선택 사항이 아닙니다.
         </p>
         <pre style="margin-top: 0.75rem;"><code>/setup</code></pre>
+        <p data-lang="en" style="margin-top: 0.75rem; margin-bottom: 0;">
+          Configures <code>quietStartup: true</code> so the extension's custom ROACH PI banner replaces the default startup listing.
+        </p>
+        <p data-lang="ko" style="margin-top: 0.75rem; margin-bottom: 0;">
+          익스텐션의 커스텀 ROACH PI 배너가 기본 시작 목록을 대체하도록 <code>quietStartup: true</code>를 설정합니다.
+        </p>
+      </div>
+    </section>
+
+    <!-- Why ROACH PI -->
+    <section class="section" id="why">
+      <h2>
+        <span class="icon">●</span>
+        <span data-lang="en">Why ROACH PI?</span>
+        <span data-lang="ko">왜 ROACH PI인가요?</span>
+      </h2>
+
+      <div class="grid-2" style="margin-top: 1.5rem;">
+
+        <div class="card">
+          <span class="feature-icon">●</span>
+          <div class="feature-title">
+            <span data-lang="en">Fully Open Source</span>
+            <span data-lang="ko">완전한 오픈소스</span>
+          </div>
+          <div class="feature-desc">
+            <p data-lang="en">
+              Every line is on GitHub. No hidden prompts, no secret system instructions, no obfuscated behavior. Tools, event hooks, skill injections, and agent prompts are all plain TypeScript and Markdown.
+            </p>
+            <p data-lang="ko">
+              모든 코드가 GitHub에 공개되어 있습니다. 숨겨진 프롬프트, 비밀 시스템 지시어, 난독화된 동작 없음. 도구, 이벤트 훅, 스킬 주입, 에이전트 프롬프트가 모두 일반 TypeScript와 Markdown으로 작성되어 있습니다.
+            </p>
+          </div>
+        </div>
+
+        <div class="card">
+          <span class="feature-icon">★</span>
+          <div class="feature-title">
+            <span data-lang="en">Observable</span>
+            <span data-lang="ko">옵저버빌리티</span>
+          </div>
+          <div class="feature-desc">
+            <p data-lang="en">
+              The footer displays real-time metrics every session: <strong>prompt cache hit rate</strong>, context usage bar, active tools, branch, and model. See exactly how your context is being utilized.
+            </p>
+            <p data-lang="ko">
+              푸터에 매 세션 실시간 메트릭이 표시됩니다: <strong>프롬프트 캐시 적중률</strong>, 컨텍스트 사용량 바, 활성 도구, 브랜치, 모델. 컨텍스트가 어떻게 사용되는지 정확히 확인하세요.
+            </p>
+          </div>
+        </div>
+
+        <div class="card">
+          <span class="feature-icon">■</span>
+          <div class="feature-title">
+            <span data-lang="en">Transparent by Design</span>
+            <span data-lang="ko">디자인부터 투명하게</span>
+          </div>
+          <div class="feature-desc">
+            <p data-lang="en">
+              No magic. Read the <a href="https://github.com/tmdgusya/roach-pi" target="blank">source</a> and see exactly what the agent does. Skill rules are plain Markdown. Agent prompts are plain text. Every event hook is auditable.
+            </p>
+            <p data-lang="ko">
+              마법 없음. <a href="https://github.com/tmdgusya/roach-pi" target="blank">소스</a>를 읽고 에이전트가 정확히 무엇을 하는지 확인하세요. 스킬 규칙은 일반 Markdown, 에이전트 프롬프트는 일반 텍스트, 모든 이벤트 훅이 감사 가능합니다.
+            </p>
+          </div>
+        </div>
+
+        <div class="card">
+          <span class="feature-icon">▶</span>
+          <div class="feature-title">
+            <span data-lang="en">Simple Over Clever</span>
+            <span data-lang="ko">화려함보다 단순함</span>
+          </div>
+          <div class="feature-desc">
+            <p data-lang="en">
+              We prefer straightforward solutions over elaborate orchestration. Fewer moving parts, fewer failure modes. See our <a href="https://github.com/tmdgusya/roach-pi/blob/main/CONTRIBUTING.md" target="blank">contributing guidelines</a>.
+            </p>
+            <p data-lang="ko">
+              복잡한 오케스트레이션보다 단순한 해결책을 선호합니다. 움직이는 부분이 적을수록 실패도 적습니다. <a href="https://github.com/tmdgusya/roach-pi/blob/main/CONTRIBUTING.md" target="blank">기여 가이드라인</a>을 참조하세요.
+            </p>
+          </div>
+        </div>
+
       </div>
     </section>
 
