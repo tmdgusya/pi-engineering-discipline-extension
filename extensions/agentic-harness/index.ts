@@ -28,13 +28,10 @@ type WorkflowPhase =
 let currentPhase: WorkflowPhase = "idle";
 let activeGoalDocument: string | null = null;
 
-// State file path
 const STATE_FILE = join(homedir(), ".pi", "extension-state.json");
 
-// Cache hit rate tracking (accumulated per session)
 const cacheStats: CacheStats = { totalInput: 0, totalCacheRead: 0 };
 
-// Active tool execution tracking
 const activeTools: ActiveTools = { running: new Map() };
 
 export default function (pi: ExtensionAPI) {
@@ -118,10 +115,6 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // ============================================================
-  // subagent Tool
-  // ============================================================
-
   const HEARTBEAT_MS = 1000;
   const depthConfig = resolveDepthConfig();
 
@@ -198,7 +191,6 @@ export default function (pi: ExtensionAPI) {
           }
         }
 
-        // Chain mode
         if (chain && chain.length > 0) {
           let previousOutput = "";
           const allResults: SingleResult[] = [];
@@ -238,7 +230,6 @@ export default function (pi: ExtensionAPI) {
           };
         }
 
-        // Parallel mode
         if (tasks && tasks.length > 0) {
           if (tasks.length > MAX_PARALLEL_TASKS) {
             return {
@@ -309,7 +300,6 @@ export default function (pi: ExtensionAPI) {
           };
         }
 
-        // Single mode
         if (agent && task) {
           let effectiveTask = task;
 
@@ -324,7 +314,6 @@ export default function (pi: ExtensionAPI) {
                 effectiveTask = buildValidatorPrompt(planTask, parsed.verificationCommand);
               }
             } catch {
-              // If plan file can't be read/parsed, fall through to LLM-composed task
             }
           }
 
@@ -342,7 +331,6 @@ export default function (pi: ExtensionAPI) {
             makeDetails: makeDetails("single"),
           });
 
-          // Discipline: auto-spawn slop-cleaner after successful code-writing agent
           if (isDisciplineAgent(agent) && isResultSuccess(result)) {
             const slopCleaner = findAgent("slop-cleaner");
             if (slopCleaner) {
@@ -427,7 +415,6 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event, _ctx) => {
     const guidance = PHASE_GUIDANCE[currentPhase];
 
-    // Inject delegation depth info
     let delegationInfo = "";
     if (depthConfig.canDelegate) {
       const agentList = (await discoverAgents(_ctx.cwd || ".", "user", BUNDLED_AGENTS_DIR))
@@ -442,20 +429,12 @@ export default function (pi: ExtensionAPI) {
     };
   });
 
-  // ============================================================
-  // context: Microcompaction — truncate old tool results
-  // ============================================================
-
   pi.on("context", async (event, _ctx) => {
     const compacted = microcompactMessages(event.messages);
     const changed = compacted.some((msg, i) => msg !== event.messages[i]);
     if (!changed) return;
     return { messages: compacted };
   });
-
-  // ============================================================
-  // session_before_compact: Phase-aware custom summarization
-  // ============================================================
 
   pi.on("session_before_compact", async (event, ctx) => {
     // Skip custom compaction for idle phase with no active goal document —
@@ -554,10 +533,6 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  // ============================================================
-  // session_compact: Persist state from compaction details
-  // ============================================================
-
   pi.on("session_compact", async (event, _ctx) => {
     if (event.fromExtension && event.compactionEntry.details) {
       const details = event.compactionEntry.details as {
@@ -571,10 +546,6 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  // ============================================================
-  // tool_result: Track active goal document creation
-  // ============================================================
-
   const GOAL_DOC_PATTERN = /^docs\/engineering-discipline\/(context|plans|reviews)\//;
 
   pi.on("tool_result", async (event, _ctx) => {
@@ -583,7 +554,6 @@ export default function (pi: ExtensionAPI) {
     const toolName = event.toolName;
     if (toolName !== "write" && toolName !== "edit") return;
 
-    // event.input contains the tool's input args; both write and edit use "path"
     const filePath = event.input.path as string | undefined;
     if (!filePath) return;
 
@@ -593,10 +563,6 @@ export default function (pi: ExtensionAPI) {
       updateState(STATE_FILE, { activeGoalDocument: relativePath }).catch(() => {});
     }
   });
-
-  // ============================================================
-  // Commands
-  // ============================================================
 
   pi.registerCommand("clarify", {
     description:
@@ -698,7 +664,6 @@ export default function (pi: ExtensionAPI) {
         const raw = await readFile(settingsPath, "utf-8");
         current = JSON.parse(raw);
       } catch {
-        // File doesn't exist yet — will create
       }
 
       if (current.quietStartup === true) {
@@ -725,6 +690,22 @@ export default function (pi: ExtensionAPI) {
       await writeFile(settingsPath, JSON.stringify(updated, null, 2) + "\n");
 
       ctx.ui.notify("Settings updated — quietStartup is now true. Restart pi to see the effect.", "info");
+
+      // Ask to star the repository if gh is available
+      try {
+        const { execSync } = await import("child_process");
+        execSync("gh auth status", { stdio: "pipe", timeout: 3000 });
+        const star = await ctx.ui.confirm(
+          "Star roach-pi on GitHub?",
+          "Thanks for using ROACH PI! Would you like to star the repository? ⭐",
+        );
+        if (star) {
+          execSync("gh repo star tmdgusya/roach-pi", { stdio: "pipe" });
+          ctx.ui.notify("Thanks for the star! ⭐", "info");
+        }
+      } catch {
+        // gh not available or not authenticated — skip silently
+      }
     },
   });
 
@@ -750,10 +731,6 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  // ============================================================
-  // Tool execution tracking
-  // ============================================================
-
   pi.on("tool_execution_start", async (event, _ctx) => {
     activeTools.running.set(event.toolCallId, event.toolName);
   });
@@ -762,21 +739,15 @@ export default function (pi: ExtensionAPI) {
     activeTools.running.delete(event.toolCallId);
   });
 
-  // ============================================================
-  // Session start: header + footer + state restore
-  // ============================================================
-
   pi.on("session_start", async (_event, ctx) => {
     const saved = await loadState(STATE_FILE);
     currentPhase = saved.phase;
     activeGoalDocument = saved.activeGoalDocument;
 
-    // Reset stats for new session
     cacheStats.totalInput = 0;
     cacheStats.totalCacheRead = 0;
     activeTools.running.clear();
 
-    // Custom header: ROACH PI ASCII art banner
     ctx.ui.setHeader((_tui, theme) => {
       const banner = [
         "██████╗  ██████╗  █████╗  ██████╗██╗  ██╗    ██████╗ ██╗",
@@ -810,7 +781,6 @@ export default function (pi: ExtensionAPI) {
       return new Text(`\n${banner}\n${tagline}\n\n${tipLine}\n${clarifyLine}\n\n${hints}`, 1, 0);
     });
 
-    // Custom footer: dir │ branch │ model │ context bar │ cache hit rate
     ctx.ui.setFooter((_tui, theme, footerData) => {
       return new RoachFooter(theme, footerData, {
         cwd: ctx.cwd,
