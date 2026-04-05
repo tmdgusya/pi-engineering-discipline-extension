@@ -12,5 +12,8 @@
       "extensions/agentic-harness/index.ts",
       "extensions/hud-dashboard/src/index.ts"
     ]
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.49"
   }
 }

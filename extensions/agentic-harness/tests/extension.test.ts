@@ -68,6 +68,7 @@ describe("Extension Registration", () => {
     expect(events.has("context")).toBe(true);
     expect(events.has("session_before_compact")).toBe(true);
     expect(events.has("session_compact")).toBe(true);
+    expect(events.has("tool_result")).toBe(true);
   });
 });
 
@@ -232,5 +233,15 @@ describe("/plan Command", () => {
     expect(mockPi.sendUserMessage).toHaveBeenCalledTimes(1);
     const prompt = mockPi.sendUserMessage.mock.calls[0][0];
     expect(prompt).toContain("plan-crafting");
+  });
+});
+
+describe("Goal Document Tracking", () => {
+  it("should register tool_result event handler", () => {
+    const { mockPi, events } = createMockPi();
+    extension(mockPi);
+
+    expect(events.has("tool_result")).toBe(true);
+    expect(events.get("tool_result")!.length).toBeGreaterThan(0);
   });
 });

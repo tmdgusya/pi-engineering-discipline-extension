@@ -1,53 +1,59 @@
 # Pi Engineering Discipline Extension
 
-An advanced extension for the [pi coding agent](https://github.com/badlogic/pi-mono), designed to bring strict engineering discipline and agentic orchestration to your workflow. 
+An advanced extension for the [pi coding agent](https://github.com/badlogic/pi-mono), designed to bring strict engineering discipline and agentic orchestration to your workflow.
 
-Instead of relying solely on chat prompts, this extension provides deterministic TUI (Terminal UI) dashboards and actual parallel sub-agent execution for complex tasks like milestone planning and clarification loops.
+The agent dynamically generates questions, selects reviewers, and drives workflow phases autonomously — no hardcoded templates or fixed question sets.
 
 ## Features
 
-- **`/clarify`**: Replaces messy chat loops with a native TUI questionnaire to gather your Goal, Scope, and Constraints before intelligently exploring the codebase.
-- **`/plan`**: Forces the agent into strict plan-crafting mode, ensuring no placeholders or vague tasks are left behind.
-- **`/ultraplan`**: Spawns **5 real parallel `pi` sub-agents** (Security, Architecture, Data Flow, Edge Cases, UX & State) to independently review your codebase. It features a beautiful live dashboard showing real-time spinner animations and status updates, synthesizing the results into a final milestone DAG when complete.
+- **`/clarify`**: The agent asks dynamic, context-aware questions one at a time to resolve ambiguity. It generates questions and choices on the fly based on your request, while exploring the codebase in parallel. Ends with a structured Context Brief.
+- **`/plan`**: Delegates to the agent in strict plan-crafting mode, ensuring executable implementation plans with no placeholders.
+- **`/ultraplan`**: The agent dynamically decides which reviewer perspectives are needed for your specific problem, dispatches them in parallel, and synthesizes findings into a milestone DAG.
+- **`/ask`**: Manual test command for the `ask_user_question` tool.
+- **`/reset-phase`**: Resets the workflow phase to idle (useful if you want to exit clarify/plan/ultraplan mode manually).
+- **`ask_user_question` tool**: Registered as an LLM tool that the agent calls autonomously whenever it encounters ambiguity — not just during `/clarify`.
+
+## How It Works
+
+The extension uses three key mechanisms:
+
+1. **`ask_user_question` tool** with `promptGuidelines` — the agent decides when and what to ask, generating questions and choices dynamically.
+2. **`resources_discover` event** — automatically registers `~/engineering-discipline/skills/` so the agent has access to clarification, plan-crafting, and milestone-planning skill rules.
+3. **`before_agent_start` event** — injects workflow phase guidance into the system prompt so the agent stays on track during `/clarify`, `/plan`, or `/ultraplan` sessions.
 
 ## Prerequisites
 
-This extension relies on the core engineering discipline instructions (the LLM rulesets) to function correctly. **Before using this extension**, please ensure you have the core skills installed in your workspace or globally.
+This extension relies on the core engineering discipline skills (the LLM rulesets). **Before using this extension**, install the skills:
 
-You can find the required skills repository here:
 👉 **[tmdgusya/engineering-discipline](https://github.com/tmdgusya/engineering-discipline)**
 
-*(If these skills are not installed, the LLM will not understand what the "plan-crafting" or "ultraplan" rules are when the extension triggers them).*
+The extension registers the skill paths automatically via `resources_discover`, so they will be available in the agent's system prompt.
 
 ## Installation
-
-You can install this extension globally for `pi` using the built-in package manager directly from this GitHub repository:
 
 ```bash
 pi install git:github.com/tmdgusya/pi-engineering-discipline-extension
 ```
 
-*Note: This will automatically add the extension to your global `pi` settings and load it on your next session.*
-
 ## Usage
 
-Start your `pi` agent in interactive mode as usual:
+Start `pi` in interactive mode:
 
 ```bash
 pi
 ```
 
-Then, trigger the interactive workflows by typing the slash commands:
+Then use the slash commands:
 
-1. Type `/clarify` to define the parameters of a vague feature request.
-2. Type `/plan` to convert the generated Context Brief into an executable implementation plan.
-3. Type `/ultraplan` for complex features to launch the parallel multi-agent review dashboard.
+1. `/clarify` — resolve ambiguity before planning (outputs a Context Brief)
+2. `/plan` — create an executable implementation plan from the Context Brief
+3. `/ultraplan` — decompose complex tasks into milestones with parallel reviewers
+
+The `ask_user_question` tool is also available to the agent at all times — it will ask you questions autonomously whenever it detects ambiguity, even outside of `/clarify` mode.
 
 ## Development
 
-If you want to modify this extension locally:
-
-1. Clone the repository into your global pi extensions folder:
+1. Clone the repository:
    ```bash
    git clone https://github.com/tmdgusya/pi-engineering-discipline-extension.git ~/.pi/agent/extensions/agentic-harness
    ```
@@ -56,12 +62,12 @@ If you want to modify this extension locally:
    cd ~/.pi/agent/extensions/agentic-harness
    npm install
    ```
-3. The extension will automatically be discovered by `pi`. If you make changes while `pi` is running, just type `/reload` in the `pi` terminal to apply them instantly.
+3. Type `/reload` in the `pi` terminal to apply changes.
 
 ## Testing
-
-This extension includes a Vitest suite to verify parallel sub-agent spawning and TUI handoffs:
 
 ```bash
 npm run test
 ```
+
+12 tests covering tool registration, command delegation, event handlers, and ask_user_question behavior (free-text, multi-choice, direct input fallback, cancellation).
