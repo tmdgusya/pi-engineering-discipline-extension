@@ -35,6 +35,18 @@ describe("Extension Registration", () => {
     expect(tool.promptGuidelines.length).toBeGreaterThan(0);
   });
 
+  it("should register subagent tool", () => {
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    const tool = tools.get("subagent");
+    expect(tool).toBeDefined();
+    expect(tool.name).toBe("subagent");
+    expect(tool.promptSnippet).toBeDefined();
+    expect(tool.promptGuidelines).toBeDefined();
+    expect(tool.promptGuidelines.length).toBe(6);
+  });
+
   it("should register all commands", () => {
     const { mockPi, commands } = createMockPi();
     extension(mockPi);
@@ -195,6 +207,7 @@ describe("/clarify Command", () => {
     expect(prompt).toContain("login feature");
     expect(prompt).toContain("clarification");
     expect(prompt).toContain("ask_user_question");
+    expect(prompt).toContain("subagent");
   });
 });
 

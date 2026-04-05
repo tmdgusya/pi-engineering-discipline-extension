@@ -34,6 +34,8 @@ describe("Ultraplan Command", () => {
     const prompt = mockPi.sendUserMessage.mock.calls[0][0];
     expect(prompt).toContain("milestone-planning");
     expect(prompt).toContain("reviewer");
+    expect(prompt).toContain("subagent");
+    expect(prompt).toContain("Feasibility");
   });
 
   it("should not proceed if user cancels confirmation", async () => {
