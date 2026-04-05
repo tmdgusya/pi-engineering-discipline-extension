@@ -2,6 +2,18 @@
 
 Thank you for your interest in contributing to ROACH PI! This document outlines the process.
 
+## Design Philosophy
+
+**Simple is better than clever.**
+
+This project values simplicity over complexity:
+- Prefer straightforward solutions over elaborate orchestration
+- Fewer moving parts, fewer failure modes
+- If a feature requires complex multi-step orchestration to explain, it probably needs to be simplified
+- Don't build extensibility for hypothetical future use cases — solve the problem at hand
+
+We'd rather have a well-done simple tool than a half-working complex system.
+
 ## 🚨 Before Adding a Feature — Start a Discussion
 
 **All feature proposals must be discussed on GitHub Discussions before implementation.**
