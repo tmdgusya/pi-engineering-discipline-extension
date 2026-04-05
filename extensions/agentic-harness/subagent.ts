@@ -107,11 +107,18 @@ async function writeTempSystemPrompt(content: string): Promise<string> {
   return filepath;
 }
 
+export interface SubagentProgress {
+  turns: number;
+  toolCalls: number;
+  lastText: string;
+}
+
 export async function runSingleAgent(
   agent: AgentConfig | undefined,
   task: string,
   cwd: string,
   signal?: AbortSignal,
+  onProgress?: (progress: SubagentProgress) => void,
 ): Promise<SubagentResult> {
   const invocation = getPiInvocation();
   const args = [...invocation.args, "--mode", "json", "-p", "--no-session"];
@@ -141,9 +148,44 @@ export async function runSingleAgent(
       let stdout = "";
       let stderr = "";
       let wasAborted = false;
+      let lineBuffer = "";
+      let turns = 0;
+      let toolCalls = 0;
+      let lastText = "";
 
       proc.stdout.on("data", (chunk: Buffer) => {
-        stdout += chunk.toString();
+        const str = chunk.toString();
+        stdout += str;
+        lineBuffer += str;
+
+        const lines = lineBuffer.split("\n");
+        lineBuffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event = JSON.parse(line);
+            if (event.type === "message_end" && event.message) {
+              turns++;
+              const msg = event.message;
+              if (msg.role === "assistant" && Array.isArray(msg.content)) {
+                for (const block of msg.content) {
+                  if (block.type === "text" && block.text?.trim()) {
+                    lastText = block.text.length > 120
+                      ? block.text.slice(0, 120) + "..."
+                      : block.text;
+                  }
+                }
+              }
+            }
+            if (event.type === "tool_result_end") {
+              toolCalls++;
+            }
+            onProgress?.({ turns, toolCalls, lastText });
+          } catch {
+            // Skip non-JSON lines
+          }
+        }
       });
 
       proc.stderr.on("data", (chunk: Buffer) => {

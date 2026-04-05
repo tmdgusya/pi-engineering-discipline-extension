@@ -237,6 +237,9 @@ export default function (pi: ExtensionAPI) {
             taskWithContext,
             step.cwd || defaultCwd,
             signal,
+            (p) => {
+              ctx.ui.setStatus("harness", `Chain ${i + 1}/${chain.length}: ${chain[i].agent} (${p.turns} turns, ${p.toolCalls} tools)`);
+            },
           );
           allResults.push(result);
 
@@ -301,6 +304,9 @@ export default function (pi: ExtensionAPI) {
             item.task,
             item.cwd || defaultCwd,
             signal,
+            (p) => {
+              ctx.ui.setStatus("harness", `Parallel ${completed}/${total}: ${tasks[index].agent} (${p.turns} turns, ${p.toolCalls} tools)`);
+            },
           );
           completed++;
           ctx.ui.setStatus("harness", `Parallel: ${completed}/${total} agents done`);
@@ -343,6 +349,15 @@ export default function (pi: ExtensionAPI) {
           task,
           cwd || defaultCwd,
           signal,
+          (p) => {
+            ctx.ui.setStatus("harness", `${agent}: ${p.turns} turns, ${p.toolCalls} tools`);
+            if (onUpdate && p.lastText) {
+              onUpdate({
+                content: [{ type: "text" as const, text: p.lastText }],
+                details: undefined,
+              });
+            }
+          },
         );
         ctx.ui.setStatus("harness", undefined);
 
