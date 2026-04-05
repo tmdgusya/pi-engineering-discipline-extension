@@ -1,0 +1,19 @@
+{
+  "name": "hud-dashboard",
+  "version": "1.0.0",
+  "description": "Interactive HUD dashboard for pi-coding-agent to monitor agentic workflow status",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.2"
+  }
+}

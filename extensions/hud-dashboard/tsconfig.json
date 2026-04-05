@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": false,
+    "noImplicitAny": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": ".",
+    "paths": {
+      "@mariozechner/pi-coding-agent": ["/home/roach/.hermes/node/lib/node_modules/@mariozechner/pi-coding-agent"],
+      "@mariozechner/pi-tui": ["/home/roach/.hermes/node/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-tui"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

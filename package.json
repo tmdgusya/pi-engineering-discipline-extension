@@ -1,0 +1,16 @@
+{
+  "name": "pi-engineering-discipline-extension",
+  "version": "1.0.0",
+  "description": "Advanced extension suite for pi-coding-agent, providing agentic harness and HUD dashboard.",
+  "keywords": [
+    "pi-package"
+  ],
+  "author": "tmdgusya",
+  "license": "MIT",
+  "pi": {
+    "extensions": [
+      "extensions/agentic-harness/index.ts",
+      "extensions/hud-dashboard/src/index.ts"
+    ]
+  }
+}
