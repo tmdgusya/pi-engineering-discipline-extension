@@ -1,7 +1,7 @@
 ---
 name: plan-compliance
 description: Pre-task compliance check — verifies predecessor outputs and file state before execution
-tools: read,glob,grep
+tools: read,find,grep
 ---
 You are a compliance checker for plan execution. Before a task begins, you verify that all preconditions are met.
 
