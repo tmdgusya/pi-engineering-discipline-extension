@@ -4,7 +4,9 @@ import { homedir } from "os";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { discoverAgents } from "./agents.js";
-import { runSingleAgent, runParallel, runChain, mapWithConcurrencyLimit, MAX_CONCURRENCY } from "./subagent.js";
+import { runAgent, mapWithConcurrencyLimit, MAX_CONCURRENCY, MAX_PARALLEL_TASKS, resolveDepthConfig, getCycleViolations } from "./subagent.js";
+import { emptyUsage, isResultError, isResultSuccess, getResultSummaryText, getFinalOutput, type SingleResult, type SubagentDetails } from "./types.js";
+import { renderCall, renderResult } from "./render.js";
 import { loadState, updateState } from "./state.js";
 import { microcompactMessages, getCompactionPrompt, formatCompactSummary } from "./compaction.js";
 import { convertToLlm, serializeConversation } from "@mariozechner/pi-coding-agent";
@@ -119,270 +121,218 @@ export default function (pi: ExtensionAPI) {
   // ============================================================
   // subagent Tool
   // ============================================================
-  // Delegates tasks to specialized agents running as separate
-  // pi processes. Supports single, parallel, and chain modes.
-  // ============================================================
+
+  const HEARTBEAT_MS = 1000;
+  const depthConfig = resolveDepthConfig();
 
   const TaskItem = Type.Object({
-    agent: Type.String({
-      description: "Name of the agent to invoke",
-    }),
-    task: Type.String({
-      description: "Task to delegate to the agent",
-    }),
-    cwd: Type.Optional(
-      Type.String({
-        description: "Working directory for the agent process",
-      })
-    ),
+    agent: Type.String({ description: "Name of the agent to invoke" }),
+    task: Type.String({ description: "Task to delegate to the agent" }),
+    cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
   });
 
   const ChainItem = Type.Object({
-    agent: Type.String({
-      description: "Name of the agent to invoke",
-    }),
-    task: Type.String({
-      description:
-        "Task with optional {previous} placeholder for prior step output",
-    }),
-    cwd: Type.Optional(
-      Type.String({
-        description: "Working directory for the agent process",
-      })
-    ),
+    agent: Type.String({ description: "Name of the agent to invoke" }),
+    task: Type.String({ description: "Task with optional {previous} placeholder for prior step output" }),
+    cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
   });
 
   const SubagentParams = Type.Object({
-    agent: Type.Optional(
-      Type.String({
-        description: "Agent name for single mode execution",
-      })
-    ),
-    task: Type.Optional(
-      Type.String({
-        description: "Task description for single mode execution",
-      })
-    ),
-    tasks: Type.Optional(
-      Type.Array(TaskItem, {
-        description:
-          "Array of {agent, task} objects for parallel execution (max 8)",
-      })
-    ),
-    chain: Type.Optional(
-      Type.Array(ChainItem, {
-        description:
-          "Array of {agent, task} objects for sequential chaining. Use {previous} in task to reference prior output.",
-      })
-    ),
-    agentScope: Type.Optional(
-      Type.Unsafe<"user" | "project" | "both">({
-        type: "string",
-        enum: ["user", "project", "both"],
-        description:
-          'Which agent directories to search. "user" = ~/.pi/agent/agents/, "project" = .pi/agents/ in project root. Default: "user".',
-        default: "user",
-      })
-    ),
-    cwd: Type.Optional(
-      Type.String({
-        description: "Working directory for single mode",
-      })
-    ),
+    agent: Type.Optional(Type.String({ description: "Agent name for single mode execution" })),
+    task: Type.Optional(Type.String({ description: "Task description for single mode execution" })),
+    tasks: Type.Optional(Type.Array(TaskItem, { description: "Array of {agent, task} objects for parallel execution (max 8)" })),
+    chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} objects for sequential chaining. Use {previous} in task to reference prior output." })),
+    agentScope: Type.Optional(Type.Unsafe<"user" | "project" | "both">({
+      type: "string", enum: ["user", "project", "both"],
+      description: 'Which agent directories to search. Default: "user".',
+      default: "user",
+    })),
+    cwd: Type.Optional(Type.String({ description: "Working directory for single mode" })),
   });
 
-  pi.registerTool({
-    name: "subagent",
-    label: "Subagent",
-    description:
-      "Delegate tasks to specialized agents running as separate pi processes. Supports single, parallel, and chain execution modes.",
-    promptSnippet:
-      "Delegate tasks to specialized agents (single, parallel, or chain mode)",
-    promptGuidelines: [
-      "Use single mode (agent + task) for one-off tasks. Use parallel mode (tasks array) for concurrent dispatch. Use chain mode (chain array) for sequential pipelines with {previous} placeholder.",
-      "ONLY use these exact agent names — do NOT invent or guess agent names: explorer, worker, planner, plan-worker, plan-validator, plan-compliance, reviewer-feasibility, reviewer-architecture, reviewer-risk, reviewer-dependency, reviewer-user-value.",
-      "All agents use the default model. Do NOT specify or mention specific models (no Haiku, Sonnet, etc.).",
-      "For codebase exploration: use 'explorer'. For general execution: use 'worker'. For plan execution: use 'plan-compliance' → 'plan-worker' → 'plan-validator'.",
-      "For ultraplan milestone reviews: dispatch all 5 reviewers in parallel: reviewer-feasibility, reviewer-architecture, reviewer-risk, reviewer-dependency, reviewer-user-value.",
-      "Max 8 parallel tasks with 4 concurrent. Chain mode stops on first error.",
-    ],
-    parameters: SubagentParams,
-    execute: async (toolCallId, params, signal, onUpdate, ctx) => {
-      const { agent, task, tasks, chain, agentScope, cwd } = params;
-      const defaultCwd = ctx.cwd;
-      const agents = await discoverAgents(defaultCwd, agentScope || "user", BUNDLED_AGENTS_DIR);
-      const findAgent = (name: string) =>
-        agents.find((a) => a.name === name);
+  const makeDetails = (mode: "single" | "parallel") => (results: SingleResult[]): SubagentDetails => ({ mode, results });
 
-      // Chain mode
-      if (chain && chain.length > 0) {
-        const steps = chain.map((s) => ({
-          agent: findAgent(s.agent),
-          task: s.task,
-          cwd: s.cwd,
-        }));
+  if (depthConfig.canDelegate) {
+    pi.registerTool({
+      name: "subagent",
+      label: "Subagent",
+      description:
+        "Delegate tasks to specialized agents running as separate pi processes. Supports single, parallel, and chain execution modes.",
+      promptSnippet:
+        "Delegate tasks to specialized agents (single, parallel, or chain mode)",
+      promptGuidelines: [
+        "Use single mode (agent + task) for one-off tasks. Use parallel mode (tasks array) for concurrent dispatch. Use chain mode (chain array) for sequential pipelines with {previous} placeholder.",
+        "ONLY use these exact agent names — do NOT invent or guess agent names: explorer, worker, planner, plan-worker, plan-validator, plan-compliance, reviewer-feasibility, reviewer-architecture, reviewer-risk, reviewer-dependency, reviewer-user-value.",
+        "All agents use the default model. Do NOT specify or mention specific models (no Haiku, Sonnet, etc.).",
+        "For codebase exploration: use 'explorer'. For general execution: use 'worker'. For plan execution: use 'plan-compliance' → 'plan-worker' → 'plan-validator'.",
+        "For ultraplan milestone reviews: dispatch all 5 reviewers in parallel: reviewer-feasibility, reviewer-architecture, reviewer-risk, reviewer-dependency, reviewer-user-value.",
+        "Max 8 parallel tasks with 4 concurrent. Chain mode stops on first error.",
+      ],
+      parameters: SubagentParams,
 
-        ctx.ui.setStatus("harness", `Chain: 0/${chain.length} steps`);
-        const allResults: import("./subagent.js").SubagentResult[] = [];
-        let previousOutput = "";
+      renderCall: (args, theme) => renderCall(args, theme),
+      renderResult: (result, { expanded }, theme) => renderResult(result, expanded, theme),
 
-        for (let i = 0; i < steps.length; i++) {
-          const step = steps[i];
-          ctx.ui.setStatus("harness", `Chain step ${i + 1}/${chain.length}: ${chain[i].agent}`);
-          const taskWithContext = step.task.replace(/\{previous\}/g, previousOutput);
-          const result = await runSingleAgent(
-            step.agent,
-            taskWithContext,
-            step.cwd || defaultCwd,
-            signal,
-            (p) => {
-              ctx.ui.setStatus("harness", `Chain ${i + 1}/${chain.length}: ${chain[i].agent} (${p.turns} turns, ${p.toolCalls} tools)`);
-            },
-          );
-          allResults.push(result);
+      execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+        const { agent, task, tasks, chain, agentScope, cwd } = params;
+        const defaultCwd = ctx.cwd;
+        const agents = await discoverAgents(defaultCwd, agentScope || "user", BUNDLED_AGENTS_DIR);
+        const findAgent = (name: string) => agents.find((a) => a.name === name);
 
-          // Emit progress update
-          if (onUpdate) {
-            const partialSummary = allResults
-              .map((r, j) =>
-                `## Step ${j + 1}: ${chain[j].agent}\n**Status:** ${r.exitCode === 0 ? "Success" : "Failed"}\n\n${r.output}`,
-              )
-              .join("\n\n---\n\n");
-            onUpdate({
-              content: [{ type: "text" as const, text: partialSummary }],
-              details: undefined,
+        // Safety: cycle detection
+        if (depthConfig.preventCycles) {
+          const requested: string[] = [];
+          if (agent) requested.push(agent);
+          if (tasks) for (const t of tasks) requested.push(t.agent);
+          if (chain) for (const s of chain) requested.push(s.agent);
+          const violations = getCycleViolations(requested, depthConfig.ancestorStack);
+          if (violations.length > 0) {
+            return {
+              content: [{ type: "text" as const, text: `Blocked: delegation cycle detected. Agents already in stack: ${violations.join(", ")}. Stack: ${depthConfig.ancestorStack.join(" -> ") || "(root)"}` }],
+              details: makeDetails("single")([]),
+              isError: true,
+            };
+          }
+        }
+
+        // Chain mode
+        if (chain && chain.length > 0) {
+          let previousOutput = "";
+          const allResults: SingleResult[] = [];
+
+          for (let i = 0; i < chain.length; i++) {
+            const step = chain[i];
+            const taskWithContext = step.task.replace(/\{previous\}/g, previousOutput);
+            const result = await runAgent({
+              agent: findAgent(step.agent),
+              agentName: step.agent,
+              task: taskWithContext,
+              cwd: step.cwd || defaultCwd,
+              depthConfig,
+              signal,
+              onUpdate,
+              makeDetails: makeDetails("single"),
             });
+            allResults.push(result);
+
+            if (isResultError(result)) {
+              const summary = allResults.map((r, j) => `[${chain[j].agent}] ${isResultError(r) ? "failed" : "completed"}: ${getResultSummaryText(r)}`).join("\n\n");
+              return {
+                content: [{ type: "text" as const, text: `Chain failed at step ${i + 1}: ${result.errorMessage || "error"}\n\n${summary}` }],
+                details: makeDetails("single")(allResults),
+              };
+            }
+            previousOutput = getFinalOutput(result.messages) || result.stderr;
           }
 
-          if (result.exitCode !== 0) {
-            ctx.ui.setStatus("harness", undefined);
-            const summary = allResults
-              .map((r, j) =>
-                `## Step ${j + 1}: ${chain[j].agent}\n**Status:** ${r.exitCode === 0 ? "Success" : "Failed"}\n\n${r.output}`,
-              )
-              .join("\n\n---\n\n");
+          const summary = allResults.map((r, i) => `[${chain[i].agent}] completed: ${getResultSummaryText(r)}`).join("\n\n");
+          return {
+            content: [{ type: "text" as const, text: summary }],
+            details: makeDetails("single")(allResults),
+          };
+        }
+
+        // Parallel mode
+        if (tasks && tasks.length > 0) {
+          if (tasks.length > MAX_PARALLEL_TASKS) {
             return {
-              content: [{ type: "text" as const, text: `Chain failed at step ${i + 1}: ${result.error}\n\n${summary}` }],
-              details: undefined,
+              content: [{ type: "text" as const, text: `Too many parallel tasks (${tasks.length}). Max is ${MAX_PARALLEL_TASKS}.` }],
+              details: makeDetails("parallel")([]),
             };
           }
 
-          previousOutput = result.output;
-          ctx.ui.notify(`[subagent] Chain step ${i + 1}/${chain.length} done: ${chain[i].agent}`, "info");
-        }
+          const allResults: SingleResult[] = tasks.map((t) => ({
+            agent: t.agent, agentSource: "unknown" as const, task: t.task,
+            exitCode: -1, messages: [], stderr: "", usage: emptyUsage(),
+          }));
 
-        ctx.ui.setStatus("harness", undefined);
-        const summary = allResults
-          .map((r, i) =>
-            `## Step ${i + 1}: ${chain[i].agent}\n**Status:** ${r.exitCode === 0 ? "Success" : "Failed"}\n\n${r.output}`,
-          )
-          .join("\n\n---\n\n");
-
-        return {
-          content: [{ type: "text" as const, text: summary }],
-          details: undefined,
-        };
-      }
-
-      // Parallel mode
-      if (tasks && tasks.length > 0) {
-        const taskItems = tasks.map((t) => ({
-          agent: findAgent(t.agent),
-          task: t.task,
-          cwd: t.cwd,
-        }));
-
-        const total = tasks.length;
-        let completed = 0;
-        ctx.ui.setStatus("harness", `Parallel: 0/${total} agents running...`);
-
-        const results = await mapWithConcurrencyLimit(taskItems, MAX_CONCURRENCY, async (item, index) => {
-          const result = await runSingleAgent(
-            item.agent,
-            item.task,
-            item.cwd || defaultCwd,
-            signal,
-            (p) => {
-              ctx.ui.setStatus("harness", `Parallel ${completed}/${total}: ${tasks[index].agent} (${p.turns} turns, ${p.toolCalls} tools)`);
-            },
-          );
-          completed++;
-          ctx.ui.setStatus("harness", `Parallel: ${completed}/${total} agents done`);
-          ctx.ui.notify(
-            `[subagent] ${tasks[index].agent}: ${result.exitCode === 0 ? "done" : "failed"}`,
-            result.exitCode === 0 ? "info" : "warning",
-          );
-
-          // Emit progress update
-          if (onUpdate) {
+          const emitProgress = () => {
+            if (!onUpdate) return;
+            const done = allResults.filter((r) => r.exitCode !== -1).length;
+            const running = allResults.filter((r) => r.exitCode === -1).length;
             onUpdate({
-              content: [{ type: "text" as const, text: `${completed}/${total} agents completed` }],
-              details: undefined,
+              content: [{ type: "text" as const, text: `Parallel: ${done}/${allResults.length} done, ${running} running...` }],
+              details: makeDetails("parallel")([...allResults]),
             });
+          };
+
+          let heartbeat: ReturnType<typeof setInterval> | undefined;
+          if (onUpdate) {
+            emitProgress();
+            heartbeat = setInterval(() => {
+              if (allResults.some((r) => r.exitCode === -1)) emitProgress();
+            }, HEARTBEAT_MS);
           }
 
-          return result;
-        });
-
-        ctx.ui.setStatus("harness", undefined);
-        const summary = results
-          .map(
-            (r, i) =>
-              `## Agent: ${tasks[i].agent}\n**Task:** ${tasks[i].task}\n**Status:** ${r.exitCode === 0 ? "Success" : "Failed"}\n\n${r.output}`,
-          )
-          .join("\n\n---\n\n");
-
-        return {
-          content: [{ type: "text" as const, text: summary }],
-          details: undefined,
-        };
-      }
-
-      // Single mode
-      if (agent && task) {
-        const agentConfig = findAgent(agent);
-        ctx.ui.setStatus("harness", `Running: ${agent}`);
-        const result = await runSingleAgent(
-          agentConfig,
-          task,
-          cwd || defaultCwd,
-          signal,
-          (p) => {
-            ctx.ui.setStatus("harness", `${agent}: ${p.turns} turns, ${p.toolCalls} tools`);
-            if (onUpdate && p.lastText) {
-              onUpdate({
-                content: [{ type: "text" as const, text: p.lastText }],
-                details: undefined,
+          let results: SingleResult[];
+          try {
+            results = await mapWithConcurrencyLimit(tasks, MAX_CONCURRENCY, async (t, index) => {
+              const result = await runAgent({
+                agent: findAgent(t.agent),
+                agentName: t.agent,
+                task: t.task,
+                cwd: t.cwd || defaultCwd,
+                depthConfig,
+                signal,
+                onUpdate: (partial) => {
+                  if (partial.details?.results[0]) {
+                    allResults[index] = partial.details.results[0];
+                    emitProgress();
+                  }
+                },
+                makeDetails: makeDetails("parallel"),
               });
-            }
-          },
-        );
-        ctx.ui.setStatus("harness", undefined);
+              allResults[index] = result;
+              emitProgress();
+              return result;
+            });
+          } finally {
+            if (heartbeat) clearInterval(heartbeat);
+          }
+
+          const successCount = results.filter((r) => isResultSuccess(r)).length;
+          const summaries = results.map((r) =>
+            `[${r.agent}] ${isResultError(r) ? "failed" : "completed"}: ${getResultSummaryText(r)}`,
+          );
+          return {
+            content: [{ type: "text" as const, text: `Parallel: ${successCount}/${results.length} succeeded\n\n${summaries.join("\n\n")}` }],
+            details: makeDetails("parallel")(results),
+          };
+        }
+
+        // Single mode
+        if (agent && task) {
+          const result = await runAgent({
+            agent: findAgent(agent),
+            agentName: agent,
+            task,
+            cwd: cwd || defaultCwd,
+            depthConfig,
+            signal,
+            onUpdate,
+            makeDetails: makeDetails("single"),
+          });
+
+          if (isResultError(result)) {
+            return {
+              content: [{ type: "text" as const, text: `Agent ${result.stopReason || "failed"}: ${getResultSummaryText(result)}` }],
+              details: makeDetails("single")([result]),
+              isError: true,
+            };
+          }
+          return {
+            content: [{ type: "text" as const, text: getResultSummaryText(result) }],
+            details: makeDetails("single")([result]),
+          };
+        }
 
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: result.error
-                ? `Error: ${result.error}`
-                : result.output,
-            },
-          ],
-          details: undefined,
+          content: [{ type: "text" as const, text: "Error: Specify either (agent + task) for single mode, tasks for parallel mode, or chain for chain mode." }],
+          details: makeDetails("single")([]),
         };
-      }
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: "Error: Specify either (agent + task) for single mode, tasks for parallel mode, or chain for chain mode.",
-          },
-        ],
-        details: undefined,
-      };
-    },
-  });
+      },
+    });
+  }
 
   // ============================================================
   // resources_discover: Register engineering-discipline skills
@@ -430,36 +380,21 @@ export default function (pi: ExtensionAPI) {
     ].join("\n"),
   };
 
-  // ============================================================
-  // tool_call: Log subagent tool invocations
-  // ============================================================
-
-  pi.on("tool_call", async (event, ctx) => {
-    if (event.toolName === "subagent") {
-      const input = event.input as Record<string, unknown>;
-      const mode = input.chain
-        ? "chain"
-        : input.tasks
-          ? "parallel"
-          : "single";
-      const agentNames = input.chain
-        ? (input.chain as any[]).map((s: any) => s.agent).join(", ")
-        : input.tasks
-          ? (input.tasks as any[]).map((t: any) => t.agent).join(", ")
-          : (input.agent as string) || "unknown";
-
-      ctx.ui.notify(
-        `[subagent] mode=${mode} agents=[${agentNames}]`,
-        "info",
-      );
-    }
-  });
-
   pi.on("before_agent_start", async (event, _ctx) => {
     const guidance = PHASE_GUIDANCE[currentPhase];
-    if (!guidance) return;
+
+    // Inject delegation depth info
+    let delegationInfo = "";
+    if (depthConfig.canDelegate) {
+      const agentList = (await discoverAgents(_ctx.cwd || ".", "user", BUNDLED_AGENTS_DIR))
+        .map((a) => `- **${a.name}**: ${a.description}`)
+        .join("\n");
+      delegationInfo = `\n\n## Delegation Guards\n- Current depth: ${depthConfig.currentDepth}, max: ${depthConfig.maxDepth}\n- Cycle prevention: ${depthConfig.preventCycles ? "enabled" : "disabled"}\n- Ancestor stack: ${depthConfig.ancestorStack.length > 0 ? depthConfig.ancestorStack.join(" -> ") : "(root)"}\n\n## Available Subagents\n${agentList}`;
+    }
+
+    if (!guidance && !delegationInfo) return;
     return {
-      systemPrompt: event.systemPrompt + guidance,
+      systemPrompt: event.systemPrompt + (guidance || "") + delegationInfo,
     };
   });
 

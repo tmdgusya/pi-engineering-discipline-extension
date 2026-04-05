@@ -45,6 +45,8 @@ describe("Extension Registration", () => {
     expect(tool.promptSnippet).toBeDefined();
     expect(tool.promptGuidelines).toBeDefined();
     expect(tool.promptGuidelines.length).toBe(6);
+    expect(tool.renderCall).toBeTypeOf("function");
+    expect(tool.renderResult).toBeTypeOf("function");
   });
 
   it("should register all commands", () => {
@@ -176,18 +178,20 @@ describe("ask_user_question Tool", () => {
 });
 
 describe("before_agent_start Event", () => {
-  it("should not modify system prompt when phase is idle", async () => {
+  it("should inject delegation guards even when phase is idle", async () => {
     const { mockPi, events } = createMockPi();
     extension(mockPi);
 
     const handlers = events.get("before_agent_start")!;
     const result = await handlers[0](
       { type: "before_agent_start", prompt: "test", systemPrompt: "base" },
-      {} as any
+      { cwd: "." } as any
     );
 
-    // idle phase returns no guidance (undefined or empty systemPrompt addition)
-    expect(result?.systemPrompt || "base").toBe("base");
+    // idle phase has no guidance text, but delegation guards are still injected
+    expect(result?.systemPrompt).toContain("base");
+    expect(result?.systemPrompt).toContain("## Delegation Guards");
+    expect(result?.systemPrompt).toContain("## Available Subagents");
   });
 });
 
