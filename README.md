@@ -1,36 +1,60 @@
-# Pi Engineering Discipline Extensions
+# Pi Engineering Discipline Extension
 
-A suite of advanced extensions for the [pi coding agent](https://github.com/badlogic/pi-mono), designed to bring strict engineering discipline and agentic orchestration to your workflow.
+An advanced extension for the [pi coding agent](https://github.com/badlogic/pi-mono), designed to bring strict engineering discipline and agentic orchestration to your workflow.
 
-This repository contains two main extensions:
-1. **Agentic Harness**: Orchestrates complex agentic workflows (`/clarify`, `/plan`, `/ultraplan`).
-2. **HUD Dashboard**: Real-time status monitoring with secret redaction and context-aware display.
+The agent dynamically generates questions, selects reviewers, and drives workflow phases autonomously — no hardcoded templates or fixed question sets.
 
 ## Installation
-
-You can install this suite globally for `pi` using the built-in package manager:
 
 ```bash
 pi install git:github.com/tmdgusya/pi-engineering-discipline-extension
 ```
 
-*Note: This will automatically add both extensions to your global `pi` settings.*
+## Features
 
-## Extensions
+### Commands
+- **`/clarify`**: The agent asks dynamic, context-aware questions one at a time to resolve ambiguity. It generates questions and choices on the fly based on your request, while exploring the codebase via subagents in parallel. Ends with a structured Context Brief.
+- **`/plan`**: Delegates to the agent in strict plan-crafting mode, ensuring executable implementation plans with no placeholders.
+- **`/ultraplan`**: The agent dispatches all 5 reviewer perspectives (Feasibility, Architecture, Risk, Dependency, User Value) in parallel via the subagent tool, then synthesizes findings into a milestone DAG.
+- **`/ask`**: Manual test command for the `ask_user_question` tool.
+- **`/reset-phase`**: Resets the workflow phase to idle.
 
-### 1. Agentic Harness
-- **`/clarify`**: Native TUI questionnaire to gather Goal, Scope, and Constraints.
-- **`/plan`**: Plan-crafting mode to generate executable implementation plans.
-- **`/ultraplan`**: Parallel multi-agent review dashboard with live animations.
+### Tools
+- **`ask_user_question`**: The agent calls this autonomously whenever it encounters ambiguity — generating questions and choices dynamically based on context.
+- **`subagent`**: Delegates tasks to specialized agents running as separate `pi` processes. Supports three execution modes:
+  - **Single**: One-off investigation or exploration tasks
+  - **Parallel**: Dispatch multiple independent agents concurrently (max 8 tasks, 4 concurrent)
+  - **Chain**: Sequential pipeline where each step uses `{previous}` to reference prior output
 
-### 2. HUD Dashboard
-- **HUD Interface**: Real-time monitoring of agent status, tools, and metrics.
-- **Security**: Automatic redaction of secrets in UI display.
-- **Commands**: `/hud-metrics`, `/hud-tools`, `/hud-minimize`, `/hud-reset`, `/hud-status`.
+### Event Handlers
+- **`resources_discover`**: Registers `~/engineering-discipline/skills/` so the agent has access to clarification, plan-crafting, and milestone-planning skill rules.
+- **`before_agent_start`**: Injects workflow phase guidance into the system prompt so the agent stays on track during `/clarify`, `/plan`, or `/ultraplan` sessions.
+
+## Subagent System
+
+The extension includes a built-in subagent system that spawns `pi` CLI subprocesses (`pi --mode json -p --no-session`).
+
+### Agent Discovery
+
+Agents are `.md` files with YAML frontmatter:
+
+```markdown
+---
+name: scout
+description: Fast reconnaissance agent
+model: haiku
+tools: read,glob,grep
+---
+You are a fast scout agent. Explore the codebase quickly and report key findings.
+```
+
+Agent locations:
+- **User agents**: `~/.pi/agent/agents/*.md`
+- **Project agents**: `.pi/agents/*.md` (overrides user agents of the same name)
 
 ## Prerequisites
 
-These extensions rely on the core engineering discipline instructions (the LLM rulesets). **Before using these**, ensure you have the core skills installed:
+This extension relies on the core engineering discipline skills (the LLM rulesets). **Before using this extension**, install the skills:
 
 👉 **[tmdgusya/engineering-discipline](https://github.com/tmdgusya/engineering-discipline)**
 
@@ -38,13 +62,23 @@ These extensions rely on the core engineering discipline instructions (the LLM r
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/tmdgusya/pi-engineering-discipline-extension.git ~/.pi/agent/extensions/pi-extensions
+   git clone https://github.com/tmdgusya/pi-engineering-discipline-extension.git ~/.pi/agent/extensions/agentic-harness
    ```
-2. Install dependencies for the extension you want to work on:
+2. Install dependencies:
    ```bash
-   cd ~/.pi/agent/extensions/pi-extensions/extensions/hud-dashboard
+   cd ~/.pi/agent/extensions/agentic-harness/extensions/agentic-harness
    npm install
    ```
+3. Type `/reload` in the `pi` terminal to apply changes.
+
+## Testing
+
+```bash
+cd extensions/agentic-harness
+npm test
+```
+
+32 tests covering tool registration, command delegation, event handlers, ask_user_question behavior, agent discovery, subagent execution helpers, and concurrency control.
 
 ## License
 MIT

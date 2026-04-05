@@ -9,7 +9,7 @@ export interface AgentConfig {
   tools?: string[];
   model?: string;
   systemPrompt: string;
-  source: "user" | "project";
+  source: "bundled" | "user" | "project";
   filePath: string;
 }
 
@@ -33,7 +33,7 @@ export function parseFrontmatter(content: string): {
 
 export async function loadAgentsFromDir(
   dir: string,
-  source: "user" | "project",
+  source: "bundled" | "user" | "project",
 ): Promise<AgentConfig[]> {
   if (!existsSync(dir)) return [];
 
@@ -77,8 +77,16 @@ export async function loadAgentsFromDir(
 export async function discoverAgents(
   cwd: string,
   scope: "user" | "project" | "both" = "user",
+  bundledDir?: string,
 ): Promise<AgentConfig[]> {
   const agents = new Map<string, AgentConfig>();
+
+  // Bundled agents (lowest priority — overridden by user and project)
+  if (bundledDir) {
+    for (const agent of await loadAgentsFromDir(bundledDir, "bundled")) {
+      agents.set(agent.name, agent);
+    }
+  }
 
   if (scope === "user" || scope === "both") {
     const userDir = join(homedir(), ".pi", "agent", "agents");

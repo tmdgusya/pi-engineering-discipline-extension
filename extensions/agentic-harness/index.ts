@@ -1,7 +1,8 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { homedir } from "os";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { discoverAgents } from "./agents.js";
 import { runSingleAgent, runParallel, runChain } from "./subagent.js";
 
@@ -21,6 +22,9 @@ type WorkflowPhase =
 let currentPhase: WorkflowPhase = "idle";
 
 export default function (pi: ExtensionAPI) {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const BUNDLED_AGENTS_DIR = join(__dirname, "agents");
+
   // ============================================================
   // ask_user_question Tool
   // ============================================================
@@ -198,7 +202,7 @@ export default function (pi: ExtensionAPI) {
     execute: async (toolCallId, params, signal, onUpdate, ctx) => {
       const { agent, task, tasks, chain, agentScope, cwd } = params;
       const defaultCwd = ctx.cwd;
-      const agents = await discoverAgents(defaultCwd, agentScope || "user");
+      const agents = await discoverAgents(defaultCwd, agentScope || "user", BUNDLED_AGENTS_DIR);
       const findAgent = (name: string) =>
         agents.find((a) => a.name === name);
 
@@ -315,7 +319,7 @@ export default function (pi: ExtensionAPI) {
       "You are in clarification mode. Follow the clarification skill rules strictly:",
       "- Ask ONE question per message using the ask_user_question tool.",
       "- Generate questions and choices dynamically based on context — no predefined templates.",
-      "- Use the subagent tool in single mode to explore the codebase in parallel with user Q&A.",
+      "- Use the subagent tool with agent 'explorer' to investigate the codebase in parallel with user Q&A.",
       "- After each answer, update 'what we've established so far' and assess remaining ambiguity.",
       "- When ambiguity is resolved, present a Context Brief with Complexity Assessment.",
       "- Do NOT start implementation. This phase ends with a Context Brief, not code.",
@@ -332,8 +336,7 @@ export default function (pi: ExtensionAPI) {
       "\n\n## Active Workflow: Milestone Planning (Ultraplan)",
       "You are in milestone-planning mode. Follow the milestone-planning skill rules strictly:",
       "- Compose a Problem Brief from the current context.",
-      "- Dispatch all 5 reviewer agents in parallel using the subagent tool's parallel mode.",
-      "- The 5 reviewers are: Feasibility, Architecture, Risk, Dependency, and User Value analysts.",
+      "- Dispatch all 5 reviewer agents in parallel using the subagent tool's parallel mode: reviewer-feasibility, reviewer-architecture, reviewer-risk, reviewer-dependency, reviewer-user-value.",
       "- Synthesize all reviewer findings into a milestone DAG.",
       "- Use ask_user_question if you need user input on trade-offs.",
     ].join("\n"),
@@ -366,8 +369,8 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.setStatus("harness", "Clarification in progress...");
 
       const prompt = topic
-        ? `The user wants to clarify the following request: "${topic}"\n\nBegin the clarification process. Follow the clarification skill rules. Ask ONE question using the ask_user_question tool. Use the subagent tool in single mode to investigate relevant parts of the codebase in parallel.`
-        : `The user wants to start a clarification session for their current task.\n\nBegin the clarification process. Follow the clarification skill rules. Ask ONE question using the ask_user_question tool to understand what the user wants to accomplish. Use the subagent tool in single mode to investigate the codebase in parallel.`;
+        ? `The user wants to clarify the following request: "${topic}"\n\nBegin the clarification process. Follow the clarification skill rules. Ask ONE question using the ask_user_question tool. Use the subagent tool with agent 'explorer' to investigate relevant parts of the codebase in parallel.`
+        : `The user wants to start a clarification session for their current task.\n\nBegin the clarification process. Follow the clarification skill rules. Ask ONE question using the ask_user_question tool to understand what the user wants to accomplish. Use the subagent tool with agent 'explorer' to investigate the codebase in parallel.`;
 
       pi.sendUserMessage(prompt);
     },
@@ -410,8 +413,8 @@ export default function (pi: ExtensionAPI) {
 
       const topic = args?.trim() || "";
       const prompt = topic
-        ? `Decompose the following complex task into milestones: "${topic}"\n\nFollow the milestone-planning skill rules. First compose a Problem Brief. Then dispatch all 5 reviewer agents (Feasibility, Architecture, Risk, Dependency, User Value) in parallel using the subagent tool's parallel mode. After all reviewers complete, synthesize their findings into a milestone DAG.`
-        : `Decompose the current complex task into milestones.\n\nFollow the milestone-planning skill rules. First compose a Problem Brief from the current context. Then dispatch all 5 reviewer agents (Feasibility, Architecture, Risk, Dependency, User Value) in parallel using the subagent tool's parallel mode. After all reviewers complete, synthesize their findings into a milestone DAG.`;
+        ? `Decompose the following complex task into milestones: "${topic}"\n\nFollow the milestone-planning skill rules. First compose a Problem Brief. Then dispatch all 5 reviewer agents in parallel using the subagent tool: reviewer-feasibility, reviewer-architecture, reviewer-risk, reviewer-dependency, reviewer-user-value. After all reviewers complete, synthesize their findings into a milestone DAG.`
+        : `Decompose the current complex task into milestones.\n\nFollow the milestone-planning skill rules. First compose a Problem Brief from the current context. Then dispatch all 5 reviewer agents in parallel using the subagent tool: reviewer-feasibility, reviewer-architecture, reviewer-risk, reviewer-dependency, reviewer-user-value. After all reviewers complete, synthesize their findings into a milestone DAG.`;
 
       pi.sendUserMessage(prompt);
     },

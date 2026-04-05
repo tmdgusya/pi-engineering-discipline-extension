@@ -35,7 +35,7 @@ describe("Ultraplan Command", () => {
     expect(prompt).toContain("milestone-planning");
     expect(prompt).toContain("reviewer");
     expect(prompt).toContain("subagent");
-    expect(prompt).toContain("Feasibility");
+    expect(prompt).toContain("reviewer-feasibility");
   });
 
   it("should not proceed if user cancels confirmation", async () => {
