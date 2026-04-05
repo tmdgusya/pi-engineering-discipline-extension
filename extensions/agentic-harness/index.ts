@@ -748,6 +748,15 @@ export default function (pi: ExtensionAPI) {
 
       const tagline = theme.fg("dim", "Engineering Discipline Extension");
 
+      const tips = [
+        "Use /plan to generate a structured implementation plan after clarifying.",
+        "Use /ultraplan for complex tasks that need multi-agent review.",
+        "Use /reset-phase if you want to switch from one workflow to another.",
+      ];
+      const randomTip = tips[Math.floor(Math.random() * tips.length)];
+      const tipLine = theme.fg("cyan", `Tip: ${randomTip}`);
+      const clarifyLine = theme.fg("dim", "However, in most cases, it's best to start with /clarify.");
+
       const hints = [
         keyHint("app.interrupt", "to interrupt"),
         keyHint("app.clear", "to clear"),
@@ -757,7 +766,7 @@ export default function (pi: ExtensionAPI) {
         rawKeyHint("!", "to run bash"),
       ].join("\n");
 
-      return new Text(`\n${banner}\n${tagline}\n\n${hints}`, 1, 0);
+      return new Text(`\n${banner}\n${tagline}\n\n${tipLine}\n${clarifyLine}\n\n${hints}`, 1, 0);
     });
 
     // Custom footer: dir │ branch │ model │ context bar │ cache hit rate

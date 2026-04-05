@@ -64,15 +64,6 @@ Add `"quietStartup": true` to `~/.pi/agent/settings.json` to hide the default Sk
 }
 ```
 
-## Prerequisites
-
-This extension relies on the core engineering discipline skills (the LLM rulesets). **Before using this extension**, install the skills:
-
-👉 **[tmdgusya/engineering-discipline](https://github.com/tmdgusya/engineering-discipline)**
-
-Skill loading runs in compatibility mode by default: non-conflicting user skills remain available.
-For colliding skill names, precedence follows discovery order (not forced to extension-first).
-
 ## Development
 
 1. Clone the repository:
