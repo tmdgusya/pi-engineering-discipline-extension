@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/engineering-discipline/">
+  <title>Review Work — Engineering Discipline</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body class="en">
+
+<nav class="nav">
+  <a href="index-en.html" class="nav-brand">▣ Engineering Discipline</a>
+  <ul class="nav-links">
+    <li><a href="index-en.html">Home</a></li>
+    <li><a href="skills/en/clarification.html">Clarification</a></li>
+    <li><a href="skills/en/plan-crafting.html">Plan Crafting</a></li>
+    <li><a href="skills/en/run-plan.html">Run Plan</a></li>
+    <li><a href="skills/en/review-work.html" class="active">Review Work</a></li>
+    <li><a href="skills/en/milestone-planning.html">Milestones</a></li>
+    <li><a href="skills/en/long-run.html">Long Run</a></li>
+    <li class="lang-switcher">
+      <a href="skills/review-work.html">KO</a>
+      <span class="divider">|</span>
+      <a href="skills/en/review-work.html" class="active">EN</a>
+    </li>
+  </ul>
+</nav>
+
+<div class="skill-header">
+  <div class="container">
+    <div>
+      <span class="skill-badge">04</span>
+      <span class="skill-badge blue">VERIFY</span>
+    </div>
+    <h1>Review Work</h1>
+    <p>Post-execution verification with information isolation. Reads only plan documents and codebase — no execution logs or worker outputs allowed.</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Section 01 -->
+  <section>
+    <h2>01 ▸ Workflow Position</h2>
+    <div class="workflow">
+    Run Plan
+        │
+        ▼
+┌─────────────┐
+│ review-work │ (ACTIVE)
+│ Independent │
+└──────┬──────┘
+       │
+       ▼
+     [DONE]
+    </div>
+  </section>
+
+  <!-- Section 02 -->
+  <section>
+    <h2>02 ▸ When to use?</h2>
+    <div class="callout">
+      Immediately after Run Plan or Long Run is complete. Used when you need to independently verify: "<em>Did the implementation strictly follow the plan?</em>"
+    </div>
+    <div class="card">
+      <div class="card-title">Key Triggers</div>
+      <ul>
+        <li><code>"review the work"</code></li>
+        <li><code>"verify implementation"</code></li>
+        <li><code>"check if it's done according to plan"</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 03 -->
+  <section>
+    <h2>03 ▸ How it works?</h2>
+    <div class="callout blue">
+      <strong>Core Principle:</strong> The Reviewer is <strong>Information Isolated</strong>. It evaluates only the results, not the implementer's intent.
+    </div>
+    <div class="card">
+      <div class="card-title">Verification Process</div>
+      <ol>
+        <li><strong>Load & Parse Plan:</strong> Read the plan file directly to extract goals and acceptance criteria.</li>
+        <li><strong>Inspect Codebase:</strong> Compare planned files vs actual files and detect residual artifacts (TODOs, etc.).</li>
+        <li><strong>Independent Test Run:</strong> Do not trust worker results; execute all tests directly.</li>
+        <li><strong>Verify Git History:</strong> Confirm the planned commit structure matches the actual log.</li>
+        <li><strong>Binary Verdict:</strong> Judge only as PASS or FAIL and generate a review document.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Section 04 -->
+  <section>
+    <h2>04 ▸ Why Isolate Information?</h2>
+    <div class="callout">
+      A Reviewer who sees the Worker's output is prone to bias, such as "the intent was good, so it passes." Information isolation is a mandatory mechanism to ensure fairness by verifying <strong>only results</strong>.
+    </div>
+  </section>
+
+  <!-- Section 05 -->
+  <section>
+    <h2>05 ▸ Hard Gates</h2>
+    <div class="card">
+      <div class="card-title">Mandatory Rules</div>
+      <ul>
+        <li>Never accept execution context (logs, output).</li>
+        <li>Read original plan files, not summaries.</li>
+        <li>Execute all tests and verification commands directly.</li>
+        <li>Verdict must be binary: <strong>PASS</strong> or <strong>FAIL</strong>.</li>
+        <li>Save review results as a file in the specified path.</li>
+        <li>This skill is Read-only. Do not fix discovered issues directly.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 06 -->
+  <section>
+    <h2>06 ▸ Related Skills</h2>
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+      <a href="skills/en/run-plan.html" class="btn">← Back to Run Plan</a>
+      <a href="index-en.html" class="btn btn-primary">Back to Home</a>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p><a href="https://github.com/tmdgusya/engineering-discipline">tmdgusya/engineering-discipline</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

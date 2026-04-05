@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/engineering-discipline/">
+  <title>Long Run — Engineering Discipline</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body class="en">
+
+<nav class="nav">
+  <a href="index-en.html" class="nav-brand">▣ Engineering Discipline</a>
+  <ul class="nav-links">
+    <li><a href="index-en.html">Home</a></li>
+    <li><a href="skills/en/clarification.html">Clarification</a></li>
+    <li><a href="skills/en/plan-crafting.html">Plan Crafting</a></li>
+    <li><a href="skills/en/run-plan.html">Run Plan</a></li>
+    <li><a href="skills/en/review-work.html">Review Work</a></li>
+    <li><a href="skills/en/milestone-planning.html">Milestones</a></li>
+    <li><a href="skills/en/long-run.html" class="active">Long Run</a></li>
+    <li class="lang-switcher">
+      <a href="skills/long-run.html">KO</a>
+      <span class="divider">|</span>
+      <a href="skills/en/long-run.html" class="active">EN</a>
+    </li>
+  </ul>
+</nav>
+
+<div class="skill-header">
+  <div class="container">
+    <div>
+      <span class="skill-badge">10</span>
+      <span class="skill-badge blue">ORCHESTRATION</span>
+    </div>
+    <h1>Long Run</h1>
+    <p>Orchestrates executions spanning multiple days. Disk checkpoints ensure survival through crashes.</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Section 01 ▸ Workflow Position -->
+  <section>
+    <h2>01 ▸ Workflow Position</h2>
+    <div class="workflow">
+      Milestone Planning
+              │
+              ▼
+┌─────────────────────────────┐
+│       Long Run (ACTIVE)     │
+│    Per-Milestone Execution  │
+└──────────────┬──────────────┘
+               │
+               ▼
+          Review Work
+    </div>
+  </section>
+
+  <!-- Section 02 ▸ When to use -->
+  <section>
+    <h2>02 ▸ When to use?</h2>
+    <div class="callout">
+      Immediately after Milestone Planning is complete, or when large-scale refactoring/feature development spanning multiple days is required.
+    </div>
+    <div class="card">
+      <div class="card-title">Key Triggers</div>
+      <ul>
+        <li><code>"long run"</code></li>
+        <li><code>"execute milestones"</code></li>
+        <li>Input: Locked Milestone DAG</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 03 ▸ How it works -->
+  <section>
+    <h2>03 ▸ How it works?</h2>
+    <div class="callout blue">
+      <strong>Core Principle:</strong> Every milestone undergoes an independent plan→run→review cycle. A failed milestone blocks all subsequent ones.
+    </div>
+    <div class="card">
+      <div class="card-title">Execution Steps</div>
+      <ol>
+        <li><strong>Sequential Milestone Execution:</strong> Perform planning, execution, and verification for each milestone and save checkpoints.</li>
+        <li><strong>Retry Escalation:</strong> Attempt up to 3 retries in the order: Re-run → Re-plan → Stop (Persistent Counter).</li>
+        <li><strong>Parallel Milestones (worktree):</strong> Milestones without dependencies are executed simultaneously in separate git worktrees.</li>
+        <li><strong>Cross-Milestone Integration Check:</strong> Detect interference between milestones after each completion.</li>
+        <li><strong>Final E2E Gate:</strong> Perform final verification after completion and clean up code with Simplify.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Section 04 ▸ Durable Design -->
+  <section>
+    <h2>04 ▸ Durable Design</h2>
+    <div class="card">
+      <table>
+        <thead>
+          <tr><th>Feature</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Disk Checkpoint</td><td>Record all status in <code>state.md</code> — Crash survival</td></tr>
+          <tr><td>Recovery Protocol</td><td>Resume from the last checkpoint in interrupted sessions</td></tr>
+          <tr><td>Rate limit</td><td>Align with pi's built-in retries</td></tr>
+          <tr><td>Context Window</td><td>Automatic compression and state separation for long-term conversations</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Section 05 ▸ Hard Gates -->
+  <section>
+    <h2>05 ▸ Hard Gates</h2>
+    <div class="card">
+      <div class="card-title">Mandatory Rules</div>
+      <ul>
+        <li>A failed milestone must immediately block the execution of subsequent milestones.</li>
+        <li>Retry counters must be persistent, maintained even if the session is interrupted.</li>
+        <li>Pre-verify that there are no file conflicts between each worktree during parallel execution.</li>
+        <li>All state changes must be immediately reflected in <code>state.md</code> on disk.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 06 ▸ Related Skills -->
+  <section>
+    <h2>06 ▸ Related Skills</h2>
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+      <a href="skills/en/milestone-planning.html" class="btn btn-primary">Milestone Planning →</a>
+      <a href="skills/en/review-work.html" class="btn btn-primary">Review Work →</a>
+      <a href="index-en.html" class="btn">← Back to Home</a>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>
+    <a href="https://github.com/tmdgusya/engineering-discipline">tmdgusya/engineering-discipline</a>
+    · MIT License
+  </p>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/engineering-discipline/">
+  <title>Simplify — Engineering Discipline</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body class="en">
+
+<nav class="nav">
+  <a href="index-en.html" class="nav-brand">▣ Engineering Discipline</a>
+  <ul class="nav-links">
+    <li><a href="index-en.html">Home</a></li>
+    <li><a href="skills/en/clarification.html">Clarification</a></li>
+    <li><a href="skills/en/plan-crafting.html">Plan Crafting</a></li>
+    <li><a href="skills/en/run-plan.html">Run Plan</a></li>
+    <li><a href="skills/en/review-work.html">Review Work</a></li>
+    <li><a href="skills/en/milestone-planning.html">Milestones</a></li>
+    <li><a href="skills/en/long-run.html">Long Run</a></li>
+    <li class="lang-switcher">
+      <a href="skills/simplify.html">KO</a>
+      <span class="divider">|</span>
+      <a href="skills/en/simplify.html" class="active">EN</a>
+    </li>
+  </ul>
+</nav>
+
+<div class="skill-header">
+  <div class="container">
+    <div>
+      <span class="skill-badge">Independent</span>
+      <span class="skill-badge blue">3 Parallel Reviewers</span>
+    </div>
+    <h1>Simplify</h1>
+    <p>Reuse, Quality, Efficiency — 3 parallel reviewers audit changed code and automatically fix discovered issues.</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Section 01 ▸ Workflow Position -->
+  <section>
+    <h2>01 ▸ Workflow Position</h2>
+    <div class="workflow">[Changes]
+  │
+  ▼
+┌─────────────────────────────┐
+│      Simplify (ACTIVE)      │
+│  3 Parallel Agent Reviews   │
+└──────────────┬──────────────┘
+               │
+               ▼
+             [DONE]</div>
+  </section>
+
+  <!-- Section 02 ▸ When to use -->
+  <section>
+    <h2>02 ▸ When to use?</h2>
+    <div class="callout">
+      Use when you want to improve code quality after implementation. Also works as the final refinement stage of a Long Run.
+    </div>
+    <div class="card">
+      <div class="card-title">Main Triggers</div>
+      <ul>
+        <li><code>simplify</code></li>
+        <li><code>clean up the code</code></li>
+        <li><code>review the changes</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 03 ▸ How it works -->
+  <section>
+    <h2>03 ▸ How it works?</h2>
+
+    <div class="callout blue">
+      <strong>Core Principle:</strong> Three reviewers see the same diff but analyze it through <strong>different lenses</strong>. Overlapping findings are merged, and minimal fixes are applied.
+    </div>
+
+    <div class="card">
+      <div class="card-title">Execution Steps</div>
+      <ul>
+        <li><strong>01. Identify Changes:</strong> Use <code>git diff</code> to identify recently modified files.</li>
+        <li><strong>02. Parallel Review Generation:</strong>
+          <ul>
+            <li><strong>Agent 1 — Reuse:</strong> Duplicate code, logic that can be inlined with existing utilities.</li>
+            <li><strong>Agent 2 — Quality:</strong> Redundant state, too many parameters, copy-paste variants, abstraction leaks, stringly-typed code, excessive comments.</li>
+            <li><strong>Agent 3 — Efficiency:</strong> Unnecessary work, missing concurrency, bloated hot paths, TOCTOU, memory leaks.</li>
+          </ul>
+        </li>
+        <li><strong>03. Merge + Minimal Fix:</strong> Aggregate results, remove duplicates, apply minimal fixes, and run tests.</li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      ⛔ <strong>HARD GATE:</strong> No major refactoring. Identified issues are handled as separate tasks.
+    </div>
+  </section>
+
+  <!-- Section 04 ▸ Related Skills -->
+  <section>
+    <h2>04 ▸ Related Skills</h2>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+      <a href="skills/en/long-run.html" class="btn">Long Run</a>
+      <a href="skills/en/review-work.html" class="btn">Review Work</a>
+    </div>
+    <a href="index-en.html" class="btn btn-primary">← Back to Home</a>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>
+    <a href="https://github.com/tmdgusya/engineering-discipline">tmdgusya/engineering-discipline</a>
+    · MIT License
+  </p>
+</footer>
+
+</body>
+</html>

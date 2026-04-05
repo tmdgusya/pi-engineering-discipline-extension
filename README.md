@@ -28,6 +28,8 @@ pi install git:github.com/tmdgusya/pi-engineering-discipline-extension
 
 ### Event Handlers
 - **`resources_discover`**: Registers `~/engineering-discipline/skills/` so the agent has access to clarification, plan-crafting, and milestone-planning skill rules.
+  - Compatibility mode (default): skills are merged with existing discovered skills.
+  - If duplicate skill names exist, the first discovered skill is kept (extension override is not guaranteed).
 - **`before_agent_start`**: Injects workflow phase guidance into the system prompt so the agent stays on track during `/clarify`, `/plan`, or `/ultraplan` sessions.
 
 ## Subagent System
@@ -57,6 +59,9 @@ Agent locations:
 This extension relies on the core engineering discipline skills (the LLM rulesets). **Before using this extension**, install the skills:
 
 👉 **[tmdgusya/engineering-discipline](https://github.com/tmdgusya/engineering-discipline)**
+
+Skill loading runs in compatibility mode by default: non-conflicting user skills remain available.
+For colliding skill names, precedence follows discovery order (not forced to extension-first).
 
 ## Development
 

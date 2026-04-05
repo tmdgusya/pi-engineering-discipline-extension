@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/engineering-discipline/">
+  <title>Systematic Debugging — Engineering Discipline</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body class="en">
+
+<nav class="nav">
+  <a href="index-en.html" class="nav-brand">▣ Engineering Discipline</a>
+  <ul class="nav-links">
+    <li><a href="index-en.html">Home</a></li>
+    <li><a href="skills/en/clarification.html">Clarification</a></li>
+    <li><a href="skills/en/plan-crafting.html">Plan Crafting</a></li>
+    <li><a href="skills/en/run-plan.html">Run Plan</a></li>
+    <li><a href="skills/en/review-work.html">Review Work</a></li>
+    <li><a href="skills/en/milestone-planning.html">Milestones</a></li>
+    <li><a href="skills/en/long-run.html">Long Run</a></li>
+    <li class="lang-switcher">
+      <a href="skills/systematic-debugging.html">KO</a>
+      <span class="divider">|</span>
+      <a href="skills/en/systematic-debugging.html" class="active">EN</a>
+    </li>
+  </ul>
+</nav>
+
+<div class="skill-header">
+  <div class="container">
+    <div>
+      <span class="skill-badge">Independent</span>
+      <span class="skill-badge blue">7-Step Protocol</span>
+    </div>
+    <h1>Systematic Debugging</h1>
+    <p>Reproduce first → Trace root cause → Failing test → Single fix → Verify. Blocks "fixing other things while I'm here."</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Section 01 ▸ Workflow Position -->
+  <section>
+    <h2>01 ▸ Workflow Position</h2>
+    <div class="workflow">[Bug / Test Failure]
+  │
+  ▼
+┌─────────────────────────────┐
+│ Systematic Debugging (ACTIVE)│
+│   7-Step Root Cause Search  │
+└──────────────┬──────────────┘
+               │
+               ▼
+             [DONE]</div>
+  </section>
+
+  <!-- Section 02 ▸ When to use -->
+  <section>
+    <h2>02 ▸ When to use?</h2>
+    <div class="callout">
+      Use when encountering any bug, test failure, or unexpected behavior. Enforces a strict reproduce-first, root-cause-first workflow.
+    </div>
+    <div class="card">
+      <div class="card-title">Main Triggers</div>
+      <ul>
+        <li>Any test failure</li>
+        <li>Production or local bug reports</li>
+        <li>Unexpected state, rendering, or query results</li>
+        <li>Performance degradation or intermittent failures</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 03 ▸ How it works -->
+  <section>
+    <h2>03 ▸ How it works?</h2>
+
+    <div class="callout blue">
+      <strong>Core Principle:</strong> Fix the cause, not the symptom. Prevent guess-based fixes by locking the failure with a test first.
+    </div>
+
+    <div class="card">
+      <div class="card-title">Execution Steps</div>
+      <ol>
+        <li><strong>Define the Problem:</strong> Expected vs. Observed behavior in one sentence.</li>
+        <li><strong>Reproduce or Instrument:</strong> Must see the failure again before fixing. Smallest path possible.</li>
+        <li><strong>Gather Evidence:</strong> Collect observable facts — stack traces, logs, boundary inputs/outputs.</li>
+        <li><strong>Isolate Root Cause:</strong> Formulate exactly one hypothesis based on evidence.</li>
+        <li><strong>Lock the Failure:</strong> Create an automated failing test (or reproduction script) before fixing.</li>
+        <li><strong>Implement a Single Fix:</strong> Minimal change addressing only the isolated hypothesis.</li>
+        <li><strong>Verify and Close:</strong> Confirm the reproduction path no longer fails and related tests pass.</li>
+      </ol>
+    </div>
+
+    <div class="gate-box">
+      <strong>Hard Gates:</strong>
+      <ul>
+        <li>Do not fix until you have a reproducible state.</li>
+        <li>Do not fix until you have a root-cause hypothesis.</li>
+        <li>Do not fix until you have a failing guard (test).</li>
+        <li>Verify only one hypothesis at a time.</li>
+        <li>No "while I'm here" refactoring during a fix.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 04 ▸ Related Skills -->
+  <section>
+    <h2>04 ▸ Related Skills</h2>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+      <a href="skills/en/simplify.html" class="btn">Simplify</a>
+      <a href="skills/en/run-plan.html" class="btn">Run Plan</a>
+    </div>
+    <a href="index-en.html" class="btn btn-primary">← Back to Home</a>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>
+    <a href="https://github.com/tmdgusya/engineering-discipline">tmdgusya/engineering-discipline</a>
+    · MIT License
+  </p>
+</footer>
+
+</body>
+</html>

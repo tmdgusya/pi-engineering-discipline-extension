@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/engineering-discipline/">
+  <title>Milestone Planning — Engineering Discipline</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body class="en">
+
+<nav class="nav">
+  <a href="index-en.html" class="nav-brand">▣ Engineering Discipline</a>
+  <ul class="nav-links">
+    <li><a href="index-en.html">Home</a></li>
+    <li><a href="skills/en/clarification.html">Clarification</a></li>
+    <li><a href="skills/en/plan-crafting.html">Plan Crafting</a></li>
+    <li><a href="skills/en/run-plan.html">Run Plan</a></li>
+    <li><a href="skills/en/review-work.html">Review Work</a></li>
+    <li><a href="skills/en/milestone-planning.html" class="active">Milestones</a></li>
+    <li><a href="skills/en/long-run.html">Long Run</a></li>
+    <li class="lang-switcher">
+      <a href="skills/milestone-planning.html">KO</a>
+      <span class="divider">|</span>
+      <a href="skills/en/milestone-planning.html" class="active">EN</a>
+    </li>
+  </ul>
+</nav>
+
+<div class="skill-header">
+  <div class="container">
+    <div>
+      <span class="skill-badge">09</span>
+      <span class="skill-badge blue">DECOMPOSE</span>
+    </div>
+    <h1>Milestone Planning</h1>
+    <p>5 independent reviewers analyze the problem in parallel to design an optimized Milestone Dependency Graph (DAG).</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Section 01 ▸ Workflow Position -->
+  <section>
+    <h2>01 ▸ Workflow Position</h2>
+    <div class="workflow">
+User Request (Complex)
+    │
+    ▼
+┌─────────────────────────────┐
+│  Clarification (9-15 points)│
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│  Milestone Planning (ACTIVE)│
+│  5 Parallel Reviews + DAG   │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│  Long Run                   │
+│  Per-Milestone Execution    │
+└─────────────────────────────┘
+    </div>
+  </section>
+
+  <!-- Section 02 ▸ When to use -->
+  <section>
+    <h2>02 ▸ When to use?</h2>
+    <div class="callout">
+      Used when Clarification results in a <strong>Complex (9-15 points)</strong> verdict, or when a large-scale task spanning multiple days is required.
+    </div>
+    <div class="card">
+      <div class="card-title">Key Triggers</div>
+      <ul>
+        <li>When <code>"divide into milestones"</code> or <code>"ultraplan"</code> commands are used</li>
+        <li>When the Long Run harness requests milestone decomposition</li>
+        <li>When the task exceeds the scope of a one-time plan (plan-crafting)</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 03 ▸ How it works -->
+  <section>
+    <h2>03 ▸ How it works?</h2>
+    <div class="callout blue">
+      <strong>Core Principle:</strong> 5 reviewers criticize the problem from their own expert perspectives (Feasibility, Architecture, Risk, Dependency, User Value) while remaining information isolated from each other.
+    </div>
+    <div class="card">
+      <div class="card-title">Execution Steps</div>
+      <ol>
+        <li><strong>Problem Framing:</strong> Write a Problem Brief including goals, scope, and constraints.</li>
+        <li><strong>Parallel Dispatch:</strong> Launch 5 reviewer agents simultaneously (preventing cross-contamination).</li>
+        <li><strong>Synthesis:</strong> Compare review results to resolve conflicts and synthesize the Milestone DAG.</li>
+        <li><strong>DAG Validation:</strong> Verify circular dependencies and file conflicts.</li>
+        <li><strong>Integration Milestone:</strong> Automatically add a final integration verification milestone.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Section 04 ▸ Milestone Count Guard -->
+  <section>
+    <h2>04 ▸ Milestone Count Guard</h2>
+    <div class="callout">
+      A count of <strong>3~7 milestones</strong> is recommended. A warning is displayed if it exceeds 7, and project splitting should be considered if it exceeds 10.
+    </div>
+  </section>
+
+  <!-- Section 05 ▸ Hard Gates -->
+  <section>
+    <h2>05 ▸ Hard Gates</h2>
+    <div class="card">
+      <ul>
+        <li>All reviewers must <strong>run in parallel</strong> (no sequential execution).</li>
+        <li>Maintain <strong>Information Isolation</strong> between reviewers (they cannot see each other's results).</li>
+        <li>Every milestone must have <strong>measurable success criteria</strong>.</li>
+        <li>Dependency structure must be a <strong>DAG (no cycles)</strong>.</li>
+        <li>Reviewer outputs must be delivered <strong>verbatim</strong> to the synthesis agent.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 06 ▸ Related Skills -->
+  <section>
+    <h2>06 ▸ Related Skills</h2>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 2rem;">
+      <a href="skills/en/clarification.html" class="btn">Clarification</a>
+      <a href="skills/en/long-run.html" class="btn btn-primary">Long Run</a>
+      <a href="index-en.html" class="btn">← Back to Home</a>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p>
+      <a href="https://github.com/tmdgusya/engineering-discipline">tmdgusya/engineering-discipline</a>
+      · MIT License
+    </p>
+  </footer>
+
+</div>
+
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/engineering-discipline/">
+  <title>Clarification — Engineering Discipline</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body class="en">
+
+<nav class="nav">
+  <a href="index-en.html" class="nav-brand">▣ Engineering Discipline</a>
+  <ul class="nav-links">
+    <li><a href="index-en.html">Home</a></li>
+    <li><a href="skills/en/clarification.html" class="active">Clarification</a></li>
+    <li><a href="skills/en/plan-crafting.html">Plan Crafting</a></li>
+    <li><a href="skills/en/run-plan.html">Run Plan</a></li>
+    <li><a href="skills/en/review-work.html">Review Work</a></li>
+    <li><a href="skills/en/milestone-planning.html">Milestones</a></li>
+    <li><a href="skills/en/long-run.html">Long Run</a></li>
+    <li class="lang-switcher">
+      <a href="skills/clarification.html">KO</a>
+      <span class="divider">|</span>
+      <a href="skills/en/clarification.html" class="active">EN</a>
+    </li>
+  </ul>
+</nav>
+
+<div class="skill-header">
+  <div class="container">
+    <div>
+      <span class="skill-badge">01</span>
+      <span class="skill-badge blue">START</span>
+    </div>
+    <h1>Clarification</h1>
+    <p>Narrow down vague requests to clear scopes via iterative Q&A + codebase search.</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- 01 Workflow Position -->
+  <section>
+    <h2>01 ▸ Workflow Position</h2>
+    <div class="workflow">
+User Request (Vague)
+    │
+    ▼
+┌─────────────────────────────┐
+│  clarification (ACTIVE)     │
+│  De-risk + Codebase Search  │
+└──────────────┬──────────────┘
+               │
+      ┌────────┴────────┐
+      ▼                 ▼
+  Simple (5-8)       Complex (9-15)
+      │                 │
+      ▼                 ▼
+ Plan Crafting    Milestone Planning
+    </div>
+  </section>
+
+  <!-- 02 When to use -->
+  <section>
+    <h2>02 ▸ When to use?</h2>
+    <div class="callout">
+      <em>"I want to..."</em>, <em>"I need..."</em>, <em>"Let's build..."</em> — it's the <strong>starting point for every request</strong> where scope isn't immediately clear.
+    </div>
+    <div class="card">
+      <div class="card-title">Key Triggers</div>
+      <ul>
+        <li>When request is vague and has multiple implementation paths</li>
+        <li>When there's potential conflict with the existing codebase</li>
+        <li>When the user hasn't fully defined what they want yet</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 03 How it works -->
+  <section>
+    <h2>03 ▸ How it works?</h2>
+    <div class="callout blue">
+      <strong>Core Principle:</strong> User Q&A and Code Exploration tracks run in parallel, complementing each other.
+    </div>
+    <div class="card">
+      <div class="card-title">Step-by-step Execution</div>
+      <ol>
+        <li><strong>Identify Ambiguity:</strong> Spot unclear points in the request.</li>
+        <li><strong>1 Question + Parallel Code Search:</strong> Ask only one question per turn while a sub-agent explores the codebase.</li>
+        <li><strong>Synthesize Answer + Search Results:</strong> Cross-verify answers with code findings. If still vague, ask the next question.</li>
+        <li><strong>Generate Context Brief:</strong> Document goals, scope, constraints, success criteria, and complexity assessment.</li>
+        <li><strong>Auto-routing based on Complexity:</strong> Decide the next workflow based on the score (5-15).</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 04 Complexity Score -->
+  <section>
+    <h2>04 ▸ Complexity Assessment</h2>
+    <div class="card">
+      <table>
+        <tr><th>Signal</th><th>Simple (1)</th><th>Medium (2)</th><th>Complex (3)</th></tr>
+        <tr><td>Scope</td><td>Single feature</td><td>2-3 components</td><td>4+ components</td></tr>
+        <tr><td>File Impact</td><td>≤3 files</td><td>4-8 files</td><td>9+ files</td></tr>
+        <tr><td>Interface</td><td>Existing internal</td><td>Interface expansion</td><td>New interface def</td></tr>
+        <tr><td>Dependency</td><td>No order</td><td>Linear chain</td><td>Branching DAG</td></tr>
+        <tr><td>Risk Surface</td><td>No integration risk</td><td>Internal integration</td><td>External systems</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <!-- 05 Hard Gates -->
+  <section>
+    <h2>05 ▸ Hard Gates</h2>
+    <div class="card">
+      <div class="card-title">Mandatory Rules</div>
+      <ul>
+        <li><strong>Only 1 question</strong> per message — never ask multiple questions.</li>
+        <li>Always search codebase via sub-agents — no assumptions or guesses.</li>
+        <li>No implementation until scope is clear — no subjective "it's enough" judgments.</li>
+        <li>Questions must narrow the scope — no repeating abstract questions.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 06 Related Skills -->
+  <section>
+    <h2>06 ▸ Related Skills</h2>
+    <p>
+      <a href="skills/en/plan-crafting.html" class="btn btn-primary">Plan Crafting →</a>
+      <a href="skills/en/milestone-planning.html" class="btn btn-primary">Milestone Planning →</a>
+    </p>
+    <p style="margin-top: 2rem;">
+      <a href="index-en.html" class="btn">← Back to Home</a>
+    </p>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>
+    <a href="https://github.com/tmdgusya/engineering-discipline">tmdgusya/engineering-discipline</a>
+    · MIT License
+  </p>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/engineering-discipline/">
+  <title>Karpathy Guidelines — Engineering Discipline</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body class="en">
+
+<nav class="nav">
+  <a href="index-en.html" class="nav-brand">▣ Engineering Discipline</a>
+  <ul class="nav-links">
+    <li><a href="index-en.html">Home</a></li>
+    <li><a href="skills/en/clarification.html">Clarification</a></li>
+    <li><a href="skills/en/plan-crafting.html">Plan Crafting</a></li>
+    <li><a href="skills/en/run-plan.html">Run Plan</a></li>
+    <li><a href="skills/en/review-work.html">Review Work</a></li>
+    <li><a href="skills/en/milestone-planning.html">Milestones</a></li>
+    <li><a href="skills/en/long-run.html">Long Run</a></li>
+    <li class="lang-switcher">
+      <a href="skills/karpathy.html">KO</a>
+      <span class="divider">|</span>
+      <a href="skills/en/karpathy.html" class="active">EN</a>
+    </li>
+  </ul>
+</nav>
+
+<div class="skill-header">
+  <div class="container">
+    <div>
+      <span class="skill-badge">Independent</span>
+      <span class="skill-badge blue">PREVENTIVE GUARDRAILS</span>
+    </div>
+    <h1>Karpathy Guidelines</h1>
+    <p>Surgical changes, assumption verification, scope discipline — prevent common LLM mistakes before and during coding.</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Section 01: Workflow Position -->
+  <section>
+    <h2>01 ▸ Workflow Position</h2>
+    <div class="workflow">       [Plan]
+         │
+         ▼
+┌─────────────────────────────┐
+│    Karpathy (ACTIVE)        │
+│    Preventive Guardrails    │
+└──────────────┬──────────────┘
+               │
+               ▼
+             [Execute]
+               │
+               ▼
+             [Verify]</div>
+  </section>
+
+  <!-- Section 02: When to use -->
+  <section>
+    <h2>02 ▸ When to use?</h2>
+    <div class="callout">
+      Always active <strong>before</strong> implementation and <strong>during</strong> coding. Prevents LLMs from ignoring existing code or attempting excessive changes.
+    </div>
+    <div class="card">
+      <div class="card-title">Key Triggers</div>
+      <ul>
+        <li>Before starting feature implementation</li>
+        <li>When attempting to generate code without reading existing context</li>
+        <li>During code modification (including exception handling)</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 03: How it works -->
+  <section>
+    <h2>03 ▸ How it works?</h2>
+    <div class="callout blue">
+      <strong>Core Principle:</strong> "Verify, don't guess." Every decision made during implementation must be based on evidence from the actual codebase.
+    </div>
+    <div class="card">
+      <div class="card-title">Guardrail Process</div>
+      <ul>
+        <li><strong>Context Sync:</strong> Before starting modifications, read the file and its related dependencies to understand conventions.</li>
+        <li><strong>List & Verify Assumptions:</strong> Immediately verify assumptions like "This function will return X" using <code>grep</code> or <code>read_file</code>.</li>
+        <li><strong>Lock Change Scope:</strong> Limit the scope to prevent unrelated refactoring or "future-proofing" code.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 04: 5 Hard Rules -->
+  <section>
+    <h2>04 ▸ 5 Hard Rules</h2>
+    <div class="card">
+      <div class="card-title">Mandatory Rules</div>
+      <ol>
+        <li><strong>Surgical Changes (Minimum Edit Needed):</strong> Only make the minimum changes required to meet the goal. Separate refactoring into a different task.</li>
+        <li><strong>No Modification Before Reading:</strong> Understand the style and conventions of the file to be modified first. Never code based on guesses.</li>
+        <li><strong>Verify All Assumptions:</strong> Always directly check APIs, function signatures, and data structures. Guesses are the root of all bugs.</li>
+        <li><strong>Define Specific Success Criteria:</strong> Clearly define "what state constitutes completion" before starting to code.</li>
+        <li><strong>No Solving Imaginary Future Problems:</strong> Strictly exclude abstractions, generalizations, or extra configurations added "because they might be needed later."</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Section 05: Related Skills -->
+  <section>
+    <h2>05 ▸ Related Skills</h2>
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem;">
+      <a href="skills/en/clean-ai-slop.html" class="btn">Clean AI Slop</a>
+      <a href="skills/en/systematic-debugging.html" class="btn">Systematic Debugging</a>
+      <a href="index-en.html" class="btn btn-primary">← Back to Home</a>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p>
+      <a href="https://github.com/tmdgusya/engineering-discipline">tmdgusya/engineering-discipline</a>
+      · MIT License
+    </p>
+  </footer>
+
+</div>
+
+</body>
+</html>

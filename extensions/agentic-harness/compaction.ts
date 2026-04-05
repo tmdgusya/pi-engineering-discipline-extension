@@ -1,4 +1,5 @@
 import type { ExtensionState } from "./state.js";
+import { PI_TOOL_NAME_SET } from "./pi-tools.js";
 
 // ============================================================
 // Constants
@@ -7,11 +8,8 @@ import type { ExtensionState } from "./state.js";
 /** Tool results older than this are truncated during microcompaction (60 min) */
 export const MICROCOMPACT_AGE_MS = 60 * 60 * 1000;
 
-/** Tools whose results can be microcompacted */
-const COMPACTABLE_TOOLS = new Set([
-  "bash", "read", "glob", "grep", "web_search", "web_fetch",
-  "edit", "write", "notebook_edit",
-]);
+/** Tools whose results can be microcompacted — all pi built-in tools. */
+const COMPACTABLE_TOOLS = PI_TOOL_NAME_SET;
 
 // ============================================================
 // Microcompaction

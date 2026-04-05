@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/engineering-discipline/">
+  <title>Rob Pike's 5 Rules — Engineering Discipline</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body class="en">
+
+<nav class="nav">
+  <a href="index-en.html" class="nav-brand">▣ Engineering Discipline</a>
+  <ul class="nav-links">
+    <li><a href="index-en.html">Home</a></li>
+    <li><a href="skills/en/clarification.html">Clarification</a></li>
+    <li><a href="skills/en/plan-crafting.html">Plan Crafting</a></li>
+    <li><a href="skills/en/run-plan.html">Run Plan</a></li>
+    <li><a href="skills/en/review-work.html">Review Work</a></li>
+    <li><a href="skills/en/milestone-planning.html">Milestones</a></li>
+    <li><a href="skills/en/long-run.html">Long Run</a></li>
+    <li class="lang-switcher">
+      <a href="skills/rob-pike.html">KO</a>
+      <span class="divider">|</span>
+      <a href="skills/en/rob-pike.html" class="active">EN</a>
+    </li>
+  </ul>
+</nav>
+
+<div class="skill-header">
+  <div class="container">
+    <div>
+      <span class="skill-badge">Independent</span>
+      <span class="skill-badge blue">Measure First</span>
+    </div>
+    <h1>Rob Pike's 5 Rules</h1>
+    <p>"Don't touch it if you haven't measured it." Prevents premature optimization and enforces data-driven tuning.</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Section 01 ▸ Workflow Position -->
+  <section>
+    <h2>01 ▸ Workflow Position</h2>
+    <div class="workflow">[Slow Code]
+  │
+  ▼
+┌─────────────────────────────┐
+│    Rob Pike's 5 Rules (ACTIVE)│
+│    Measurement & Proof      │
+└──────────────┬──────────────┘
+               │
+               ▼
+             [DONE]</div>
+  </section>
+
+  <!-- Section 02 ▸ When to use? -->
+  <section>
+    <h2>02 ▸ When to use?</h2>
+    <div class="callout">
+      Use when the user mentions "optimize", "slow", "bottleneck", "speed up", or anytime you suspect performance issues.
+    </div>
+    <div class="card">
+      <div class="card-title">Decision Framework</div>
+      <ul>
+        <li>You can't tell where a program is going to spend its time. Don't guess — prove it.</li>
+        <li>Measure. Don't tune for speed until you've measured.</li>
+        <li>Fancy algorithms are slow when n is small (and n is usually small).</li>
+        <li>Fancy algorithms are buggier than simple ones. Use simple data structures.</li>
+        <li>Data dominates. Choose the right data structures and the algorithms become self-evident.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 03 ▸ How it works? -->
+  <section>
+    <h2>03 ▸ How it works?</h2>
+
+    <div class="callout blue">
+      <strong>Core Principle:</strong> Instrumentation over intuition. The goal is to make sure measurement exists before any optimization continues.
+    </div>
+
+    <div class="card">
+      <div class="card-title">Optimization Checklist</div>
+      <ol>
+        <li><strong>Check for Instrumentation:</strong> Scan for logging, profiling, timing, or APM setup.</li>
+        <li><strong>Ask the Measurement Questions:</strong> Have I measured? Does one part overwhelm the rest? What's n?</li>
+        <li><strong>Block Anti-Patterns:</strong> Stop "this loop looks slow" or "let's add a cache" without data.</li>
+        <li><strong>Justify Complexity:</strong> Simple code that is 10% slower is almost always preferable to fragile "clever" code.</li>
+      </ol>
+    </div>
+
+    <div class="gate-box">
+      <strong>Hard Gates:</strong>
+      <ul>
+        <li>Do not optimize without measurement data showing a specific bottleneck.</li>
+        <li>The bottleneck must dominate overall runtime.</li>
+        <li>The fix must be the simplest change possible.</li>
+        <li>Re-measure after the change to confirm improvement.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 04 ▸ Related Skills -->
+  <section>
+    <h2>04 ▸ Related Skills</h2>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+      <a href="skills/en/simplify.html" class="btn">Simplify</a>
+      <a href="skills/en/systematic-debugging.html" class="btn">Debugging</a>
+    </div>
+    <a href="index-en.html" class="btn btn-primary">← Back to Home</a>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p>
+    <a href="https://github.com/tmdgusya/engineering-discipline">tmdgusya/engineering-discipline</a>
+    · MIT License
+  </p>
+</footer>
+
+</body>
+</html>

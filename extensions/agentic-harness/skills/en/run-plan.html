@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/engineering-discipline/">
+  <title>Run Plan — Engineering Discipline</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body class="en">
+
+<nav class="nav">
+  <a href="index-en.html" class="nav-brand">▣ Engineering Discipline</a>
+  <ul class="nav-links">
+    <li><a href="index-en.html">Home</a></li>
+    <li><a href="skills/en/clarification.html">Clarification</a></li>
+    <li><a href="skills/en/plan-crafting.html">Plan Crafting</a></li>
+    <li><a href="skills/en/run-plan.html" class="active">Run Plan</a></li>
+    <li><a href="skills/en/review-work.html">Review Work</a></li>
+    <li><a href="skills/en/milestone-planning.html">Milestones</a></li>
+    <li><a href="skills/en/long-run.html">Long Run</a></li>
+    <li class="lang-switcher">
+      <a href="skills/run-plan.html">KO</a>
+      <span class="divider">|</span>
+      <a href="skills/en/run-plan.html" class="active">EN</a>
+    </li>
+  </ul>
+</nav>
+
+<div class="skill-header">
+  <div class="container">
+    <div>
+      <span class="skill-badge">03</span>
+      <span class="skill-badge blue">EXECUTE</span>
+    </div>
+    <h1>Run Plan</h1>
+    <p>Worker implements, and Validator independently verifies. Auto-retry on failure, escalation to user after 3 failures.</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- 01 Workflow Position -->
+  <section>
+    <h2>01 ▸ Workflow Position</h2>
+    <div class="workflow">
+  Plan Crafting (Plan Complete)
+          │
+          ▼
+┌─────────────────────────────┐
+│      Run Plan (ACTIVE)      │
+│  Worker-Validator Loop      │
+└──────────────┬──────────────┘
+               │
+               ▼
+   Review Work (Final Independent Verification)
+    </div>
+  </section>
+
+  <!-- 02 When to use -->
+  <section>
+    <h2>02 ▸ When to use?</h2>
+    <div class="callout">
+      Immediately after Plan Crafting is complete, or when you need to implement an already written plan document into actual code.
+    </div>
+    <div class="card">
+      <div class="card-title">Key Triggers</div>
+      <ul>
+        <li><code>"execute the plan"</code></li>
+        <li><code>"run plan"</code></li>
+        <li><code>"start implementing the drafted plan"</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 03 How it works -->
+  <section>
+    <h2>03 ▸ How it works?</h2>
+
+    <div class="callout blue">
+      <strong>Core Principle:</strong> The Validator never looks at the Worker's code. It independently verifies that the output is correct based only on the <em>plan's goals</em> and <em>acceptance criteria</em>.
+    </div>
+
+    <div class="card">
+      <div class="card-title">Step-by-step Execution Process</div>
+      <ol style="line-height: 1.8;">
+        <li><strong>Discover Verification Infrastructure:</strong> Identify available test runners, linters, and agent skills in the current environment.</li>
+        <li><strong>Pre-implementation Review:</strong> Final check for potential file conflicts or dependency order errors before implementation.</li>
+        <li><strong>Worker-Validator Loop:</strong> As the Worker performs tasks, the Validator independently reviews the output.</li>
+        <li><strong>E2E Verification Gate:</strong> Once all individual steps are complete, confirm the integrated behavior of the entire system.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 04 Parallel Rules -->
+  <section>
+    <h2>04 ▸ Parallel Execution Rules</h2>
+    <div class="card">
+      <table>
+        <thead>
+          <tr><th>Condition</th><th>Execution Mode</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>No file overlap + no dependencies</td><td><strong>Parallel</strong> allowed</td></tr>
+          <tr><td>Modifying the same file</td><td><strong>Serial</strong> — perform after previous is done</td></tr>
+          <tr><td>Output of Task A is Input of Task B</td><td><strong>Serial</strong> — follow sequential dependencies</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 05 Hard Gates -->
+  <section>
+    <h2>05 ▸ Hard Gates</h2>
+    <div class="callout">
+      <ul>
+        <li><strong>3-Failure Limit:</strong> If verification fails 3 consecutive times on the same step, stop immediately and escalate to the user.</li>
+        <li><strong>Information Isolation:</strong> The Validator does not see the Worker's implementation logs; it only compares against planned acceptance criteria.</li>
+        <li><strong>No Completion without Verification:</strong> Every code change must pass automated tests or a clear verification procedure.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 06 Related Skills -->
+  <section>
+    <h2>06 ▸ Related Skills</h2>
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem;">
+      <a href="skills/en/plan-crafting.html" class="btn">← Plan Crafting</a>
+      <a href="skills/en/review-work.html" class="btn">Review Work →</a>
+      <a href="index-en.html" class="btn btn-primary">Back to Home</a>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p><a href="https://github.com/tmdgusya/engineering-discipline">tmdgusya/engineering-discipline</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

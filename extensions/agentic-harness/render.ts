@@ -7,6 +7,7 @@ import * as os from "os";
 import { getMarkdownTheme, type Theme } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
 import type { Component } from "@mariozechner/pi-tui";
+import type { PiToolName } from "./pi-tools.js";
 import {
   type DisplayItem,
   type SingleResult,
@@ -62,7 +63,7 @@ export function statusIcon(r: SingleResult, fg: ThemeFg): string {
   return isResultError(r) ? fg("error", "✗") : fg("success", "✓");
 }
 
-export function formatToolCall(toolName: string, args: Record<string, unknown>, fg: ThemeFg): string {
+export function formatToolCall(toolName: PiToolName | string, args: Record<string, unknown>, fg: ThemeFg): string {
   const pathArg = (args.file_path || args.path || "...") as string;
   switch (toolName) {
     case "bash": {
@@ -257,7 +258,7 @@ function renderSingleResult(
   } else {
     text += `\n${renderDisplayItems(displayItems, false, theme.fg.bind(theme), COLLAPSED_LINE_COUNT)}`;
     if (countDisplayLines(displayItems) > COLLAPSED_LINE_COUNT) {
-      text += `\n${theme.fg("muted", "(Ctrl+E to expand)")}`;
+      text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
     }
   }
 
@@ -349,7 +350,7 @@ function renderParallelResult(
     const totalUsage = formatUsage(aggregateUsage(details.results));
     if (totalUsage) text += `\n\n${theme.fg("dim", `Total: ${totalUsage}`)}`;
   }
-  if (!expanded) text += `\n${theme.fg("muted", "(Ctrl+E to expand)")}`;
+  if (!expanded) text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
 
   return new Text(text, 0, 0);
 }

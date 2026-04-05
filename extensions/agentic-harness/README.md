@@ -19,6 +19,8 @@ The extension uses three key mechanisms:
 
 1. **`ask_user_question` tool** with `promptGuidelines` — the agent decides when and what to ask, generating questions and choices dynamically.
 2. **`resources_discover` event** — automatically registers `~/engineering-discipline/skills/` so the agent has access to clarification, plan-crafting, and milestone-planning skill rules.
+   - Compatibility mode (default): discovered skills are merged with existing skill sources.
+   - If duplicate skill names exist, the first discovered skill is kept (extension-first override is not guaranteed).
 3. **`before_agent_start` event** — injects workflow phase guidance into the system prompt so the agent stays on track during `/clarify`, `/plan`, or `/ultraplan` sessions.
 
 ## Prerequisites
@@ -28,6 +30,9 @@ This extension relies on the core engineering discipline skills (the LLM ruleset
 👉 **[tmdgusya/engineering-discipline](https://github.com/tmdgusya/engineering-discipline)**
 
 The extension registers the skill paths automatically via `resources_discover`, so they will be available in the agent's system prompt.
+
+By default this is compatibility behavior: non-conflicting user skills remain available.
+For colliding skill names, precedence follows discovery order.
 
 ## Installation
 

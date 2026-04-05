@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/engineering-discipline/">
+  <title>Plan Crafting — Engineering Discipline</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body class="en">
+
+<nav class="nav">
+  <a href="index-en.html" class="nav-brand">▣ Engineering Discipline</a>
+  <ul class="nav-links">
+    <li><a href="index-en.html">Home</a></li>
+    <li><a href="skills/en/clarification.html">Clarification</a></li>
+    <li><a href="skills/en/plan-crafting.html" class="active">Plan Crafting</a></li>
+    <li><a href="skills/en/run-plan.html">Run Plan</a></li>
+    <li><a href="skills/en/review-work.html">Review Work</a></li>
+    <li><a href="skills/en/milestone-planning.html">Milestones</a></li>
+    <li><a href="skills/en/long-run.html">Long Run</a></li>
+    <li class="lang-switcher">
+      <a href="skills/plan-crafting.html">KO</a>
+      <span class="divider">|</span>
+      <a href="skills/en/plan-crafting.html" class="active">EN</a>
+    </li>
+  </ul>
+</nav>
+
+<div class="skill-header">
+  <div class="container">
+    <div>
+      <span class="skill-badge">02</span>
+      <span class="skill-badge blue">PLAN</span>
+    </div>
+    <h1>Plan Crafting</h1>
+    <p>Generate executable multi-step implementation plans from clear scopes. Every step must include actual code.</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Section 01 ▸ Workflow Position -->
+  <section>
+    <h2>01 ▸ Workflow Position</h2>
+    <div class="workflow">User Request (Vague)
+    │
+    ▼
+Clarification
+    │
+    ▼
+┌─────────────────────────────┐
+│  plan-crafting (ACTIVE)     │
+│  Plan Creation + Code       │
+└──────────────┬──────────────┘
+               │
+               ▼
+           run-plan
+               │
+               ▼
+          review-work
+    </div>
+  </section>
+
+  <!-- Section 02 ▸ When to use -->
+  <section>
+    <h2>02 ▸ When to use?</h2>
+    <div class="callout">
+      Immediately after Clarification is completed with a <strong>Simple (5-8 points)</strong> verdict. Or call directly when the scope is already clear.
+    </div>
+    <div class="card">
+      <div class="card-title">Key Triggers</div>
+      <ul>
+        <li>When <code>"make a plan"</code> or <code>"create plan"</code> commands are used</li>
+        <li>When a Context Brief file is ready</li>
+        <li>When you have a clear goal + scope and need a step-by-step plan</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">Input/Output</div>
+      <p><strong>Input:</strong> Context Brief file (output of clarification)</p>
+      <p><strong>Output:</strong> Executable plan document (file mapping + task decomposition)</p>
+    </div>
+  </section>
+
+  <!-- Section 03 ▸ How it works -->
+  <section>
+    <h2>03 ▸ How it works?</h2>
+
+    <div class="callout blue">
+      <strong>Core Principle:</strong> A plan is an <em>execution document</em>. A step without code is a plan defect.
+    </div>
+
+    <div class="card">
+      <div class="card-title">Execution Steps</div>
+      <ol>
+        <li><strong>Explore Verification Infrastructure:</strong> e2e, integration, test suites, builds — find the highest level of verification to determine the Final Verification Task.</li>
+        <li><strong>Map File Structure:</strong> Group related file changes in the same task, separate different responsibilities.</li>
+        <li><strong>Task Decomposition — Worker-Validator structure:</strong> Serial tasks for the same file, parallel tasks for independent work.</li>
+        <li><strong>Actual Code in Every Step:</strong> TBD, TODO, "Add appropriate error handling" — all forbidden.</li>
+        <li><strong>Self-Review:</strong> Check specification coverage, type consistency, dependency verification, and validation coverage.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Section 04 ▸ Forbidden Placeholders -->
+  <section>
+    <h2>04 ▸ Forbidden Placeholders</h2>
+    <div class="card">
+      <ul>
+        <li><code>TBD</code>, <code>TODO</code>, <code>implement later</code> — plan defects</li>
+        <li>"Add appropriate error handling" — defect without specific code</li>
+        <li>"Similar to Task N" — actual code must be repeated</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 05 ▸ Hard Gates -->
+  <section>
+    <h2>05 ▸ Hard Gates</h2>
+    <div class="card">
+      <ul>
+        <li><strong>Every step must be executable:</strong> Placeholders are never allowed.</li>
+        <li><strong>Prevent Task Collisions:</strong> Tasks modifying the same file cannot run in parallel.</li>
+        <li><strong>Mandatory Self-Review:</strong> Must verify completeness of the plan after drafting.</li>
+        <li><strong>Minimum Functional Decomposition:</strong> Each task must produce one clear artifact.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 06 ▸ Related Skills -->
+  <section>
+    <h2>06 ▸ Related Skills</h2>
+    <p style="margin-bottom: 1.5rem;">
+      <a href="skills/en/clarification.html" class="btn">← Clarification</a>
+      <a href="skills/en/run-plan.html" class="btn btn-primary">Run Plan →</a>
+    </p>
+    <a href="index-en.html" class="btn">Back to Home</a>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p><a href="https://github.com/tmdgusya/engineering-discipline">tmdgusya/engineering-discipline</a> · MIT License</p>
+</footer>
+
+</body>
+</html>

@@ -1,7 +1,7 @@
 ---
 name: planner
 description: Implementation planning and architecture design (read-only)
-tools: read,find,grep
+tools: read,find,grep,bash
 ---
 You are a planning agent. Analyze the codebase and design implementation approaches.
 

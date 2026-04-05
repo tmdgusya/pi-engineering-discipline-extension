@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="/engineering-discipline/">
+  <title>Clean AI Slop — Engineering Discipline</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body class="en">
+
+<nav class="nav">
+  <a href="index-en.html" class="nav-brand">▣ Engineering Discipline</a>
+  <ul class="nav-links">
+    <li><a href="index-en.html">Home</a></li>
+    <li><a href="skills/en/clarification.html">Clarification</a></li>
+    <li><a href="skills/en/plan-crafting.html">Plan Crafting</a></li>
+    <li><a href="skills/en/run-plan.html">Run Plan</a></li>
+    <li><a href="skills/en/review-work.html">Review Work</a></li>
+    <li><a href="skills/en/milestone-planning.html">Milestones</a></li>
+    <li><a href="skills/en/long-run.html">Long Run</a></li>
+    <li class="lang-switcher">
+      <a href="skills/clean-ai-slop.html">KO</a>
+      <span class="divider">|</span>
+      <a href="skills/en/clean-ai-slop.html" class="active">EN</a>
+    </li>
+  </ul>
+</nav>
+
+<div class="skill-header">
+  <div class="container">
+    <div>
+      <span class="skill-badge">Independent</span>
+      <span class="skill-badge blue">6-STEP CLEANUP</span>
+    </div>
+    <h1>Clean AI Slop</h1>
+    <p>Corrective cleanup of AI-generated code. Removes LLM-specific patterns (excessive comments, unnecessary abstractions, defensive paranoia, etc.) while preserving behavior.</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Section 01: Workflow Position -->
+  <section>
+    <h2>01 ▸ Workflow Position</h2>
+    <div class="workflow">[Generate]
+  │
+  ▼
+┌─────────────────────────────┐
+│  Clean AI Slop (ACTIVE)     │
+│  AI Code Cleanup            │
+└──────────────┬──────────────┘
+               │
+               ▼
+             [DONE]</div>
+  </section>
+
+  <!-- Section 02: When to use -->
+  <section>
+    <h2>02 ▸ When to use?</h2>
+    <div class="callout">
+      Used after large-scale AI code generation sessions to keep the code clean while preserving behavior.
+    </div>
+    <div class="card">
+      <div class="card-title">Key Triggers</div>
+      <ul>
+        <li>When using commands like <code>"clean up"</code>, <code>"deslop"</code>, or <code>"clean AI code"</code></li>
+        <li>Immediately after generating a large amount of AI code to ensure quality</li>
+        <li>When you want to remove LLM-specific verbosity before a code review</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 03: How it works -->
+  <section>
+    <h2>03 ▸ How it works?</h2>
+    <div class="callout blue">
+      <strong>Core Principle:</strong> Lock behavior with tests, then clean up 6 types of "smells" in <strong>sequential passes</strong>. Roll back immediately if any step fails.
+    </div>
+    <div class="card">
+      <div class="card-title">6-Step Cleanup Process</div>
+      <ol>
+        <li><strong>Lock Behavior with Tests:</strong> Confirm tests pass before cleanup — establishing a regression baseline.</li>
+        <li><strong>Remove Dead Code:</strong> Delete unused functions, variables, imports, and return values.</li>
+        <li><strong>Remove Excessive Comments:</strong> Delete comments that explain obvious code and LLM filler text.</li>
+        <li><strong>Remove Unnecessary Abstractions:</strong> Simplify single-use helpers and excessive interfaces.</li>
+        <li><strong>Remove Defensive Paranoia:</strong> Delete impossible cases, over-validation, and waterfalls of null checks.</li>
+        <li><strong>Refine Verbose Naming:</strong> Change to concise naming without sacrificing meaning.</li>
+        <li><strong>Remove LLM Filler Artifacts:</strong> Delete self-explanatory comments and excessive docstrings.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Section 04: Hard Gates -->
+  <section>
+    <h2>04 ▸ Hard Gates</h2>
+    <div class="callout">
+      <ul>
+        <li><strong>Never start cleanup</strong> before locking behavior with tests.</li>
+        <li>Limit work only to files modified by AI to prevent side effects.</li>
+        <li>Perform only one smell pass at a time, running tests after each step.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Section 05: Related Skills -->
+  <section>
+    <h2>05 ▸ Related Skills</h2>
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1.5rem;">
+      <a href="skills/en/karpathy.html" class="btn">Karpathy</a>
+      <a href="skills/en/simplify.html" class="btn">Simplify</a>
+      <a href="index-en.html" class="btn btn-primary">← Back to Home</a>
+    </div>
+  </section>
+
+</div>
+
+<footer class="footer">
+  <p><a href="https://github.com/tmdgusya/engineering-discipline">tmdgusya/engineering-discipline</a> · MIT License</p>
+</footer>
+
+</body>
+</html>
