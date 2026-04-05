@@ -1,8 +1,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { Text } from "@mariozechner/pi-tui";
 import { homedir } from "os";
 import { join } from "path";
+import { discoverAgents } from "./agents.js";
+import { runSingleAgent, runParallel, runChain } from "./subagent.js";
 
 // ============================================================
 // Workflow State
@@ -104,6 +105,194 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ============================================================
+  // subagent Tool
+  // ============================================================
+  // Delegates tasks to specialized agents running as separate
+  // pi processes. Supports single, parallel, and chain modes.
+  // ============================================================
+
+  const TaskItem = Type.Object({
+    agent: Type.String({
+      description: "Name of the agent to invoke",
+    }),
+    task: Type.String({
+      description: "Task to delegate to the agent",
+    }),
+    cwd: Type.Optional(
+      Type.String({
+        description: "Working directory for the agent process",
+      })
+    ),
+  });
+
+  const ChainItem = Type.Object({
+    agent: Type.String({
+      description: "Name of the agent to invoke",
+    }),
+    task: Type.String({
+      description:
+        "Task with optional {previous} placeholder for prior step output",
+    }),
+    cwd: Type.Optional(
+      Type.String({
+        description: "Working directory for the agent process",
+      })
+    ),
+  });
+
+  const SubagentParams = Type.Object({
+    agent: Type.Optional(
+      Type.String({
+        description: "Agent name for single mode execution",
+      })
+    ),
+    task: Type.Optional(
+      Type.String({
+        description: "Task description for single mode execution",
+      })
+    ),
+    tasks: Type.Optional(
+      Type.Array(TaskItem, {
+        description:
+          "Array of {agent, task} objects for parallel execution (max 8)",
+      })
+    ),
+    chain: Type.Optional(
+      Type.Array(ChainItem, {
+        description:
+          "Array of {agent, task} objects for sequential chaining. Use {previous} in task to reference prior output.",
+      })
+    ),
+    agentScope: Type.Optional(
+      Type.Unsafe<"user" | "project" | "both">({
+        type: "string",
+        enum: ["user", "project", "both"],
+        description:
+          'Which agent directories to search. "user" = ~/.pi/agent/agents/, "project" = .pi/agents/ in project root. Default: "user".',
+        default: "user",
+      })
+    ),
+    cwd: Type.Optional(
+      Type.String({
+        description: "Working directory for single mode",
+      })
+    ),
+  });
+
+  pi.registerTool({
+    name: "subagent",
+    label: "Subagent",
+    description:
+      "Delegate tasks to specialized agents running as separate pi processes. Supports single, parallel, and chain execution modes.",
+    promptSnippet:
+      "Delegate tasks to specialized agents (single, parallel, or chain mode)",
+    promptGuidelines: [
+      "Use single mode (agent + task) for one-off investigation or exploration tasks.",
+      "Use parallel mode (tasks array) to dispatch multiple independent agents concurrently, e.g. codebase reviewers.",
+      "Use chain mode (chain array) for sequential pipelines where each step uses {previous} to reference prior output.",
+      "Agents are .md files with YAML frontmatter (name, description, tools, model) in ~/.pi/agent/agents/ (user) or .pi/agents/ (project).",
+      "If the specified agent is not found, the task runs with default pi settings.",
+      "Max 8 parallel tasks with 4 concurrent. Chain mode stops on first error.",
+    ],
+    parameters: SubagentParams,
+    execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+      const { agent, task, tasks, chain, agentScope, cwd } = params;
+      const defaultCwd = ctx.cwd;
+      const agents = await discoverAgents(defaultCwd, agentScope || "user");
+      const findAgent = (name: string) =>
+        agents.find((a) => a.name === name);
+
+      // Chain mode
+      if (chain && chain.length > 0) {
+        const steps = chain.map((s) => ({
+          agent: findAgent(s.agent),
+          task: s.task,
+          cwd: s.cwd,
+        }));
+        const { finalResult, allResults } = await runChain(
+          steps,
+          defaultCwd,
+          signal,
+        );
+
+        const summary = allResults
+          .map(
+            (r, i) =>
+              `## Step ${i + 1}: ${chain[i].agent}\n**Status:** ${r.exitCode === 0 ? "Success" : "Failed"}\n\n${r.output}`,
+          )
+          .join("\n\n---\n\n");
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: finalResult.error
+                ? `Chain failed: ${finalResult.error}\n\n${summary}`
+                : summary,
+            },
+          ],
+          details: undefined,
+        };
+      }
+
+      // Parallel mode
+      if (tasks && tasks.length > 0) {
+        const taskItems = tasks.map((t) => ({
+          agent: findAgent(t.agent),
+          task: t.task,
+          cwd: t.cwd,
+        }));
+        const results = await runParallel(taskItems, defaultCwd, signal);
+
+        const summary = results
+          .map(
+            (r, i) =>
+              `## Agent: ${tasks[i].agent}\n**Task:** ${tasks[i].task}\n**Status:** ${r.exitCode === 0 ? "Success" : "Failed"}\n\n${r.output}`,
+          )
+          .join("\n\n---\n\n");
+
+        return {
+          content: [{ type: "text" as const, text: summary }],
+          details: undefined,
+        };
+      }
+
+      // Single mode
+      if (agent && task) {
+        const agentConfig = findAgent(agent);
+        const result = await runSingleAgent(
+          agentConfig,
+          task,
+          cwd || defaultCwd,
+          signal,
+        );
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: result.error
+                ? `Error: ${result.error}`
+                : result.output,
+            },
+          ],
+          details: undefined,
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: "Error: Specify either (agent + task) for single mode, tasks for parallel mode, or chain for chain mode.",
+          },
+        ],
+        details: undefined,
+      };
+    },
+  });
+
+  // ============================================================
   // resources_discover: Register engineering-discipline skills
   // ============================================================
 
@@ -126,7 +315,7 @@ export default function (pi: ExtensionAPI) {
       "You are in clarification mode. Follow the clarification skill rules strictly:",
       "- Ask ONE question per message using the ask_user_question tool.",
       "- Generate questions and choices dynamically based on context — no predefined templates.",
-      "- Dispatch Explore subagents in parallel to investigate the codebase.",
+      "- Use the subagent tool in single mode to explore the codebase in parallel with user Q&A.",
       "- After each answer, update 'what we've established so far' and assess remaining ambiguity.",
       "- When ambiguity is resolved, present a Context Brief with Complexity Assessment.",
       "- Do NOT start implementation. This phase ends with a Context Brief, not code.",
@@ -143,9 +332,9 @@ export default function (pi: ExtensionAPI) {
       "\n\n## Active Workflow: Milestone Planning (Ultraplan)",
       "You are in milestone-planning mode. Follow the milestone-planning skill rules strictly:",
       "- Compose a Problem Brief from the current context.",
-      "- Decide which reviewer perspectives are needed based on the problem (not a fixed set).",
-      "- Dispatch all reviewers in parallel.",
-      "- Synthesize findings into a milestone DAG.",
+      "- Dispatch all 5 reviewer agents in parallel using the subagent tool's parallel mode.",
+      "- The 5 reviewers are: Feasibility, Architecture, Risk, Dependency, and User Value analysts.",
+      "- Synthesize all reviewer findings into a milestone DAG.",
       "- Use ask_user_question if you need user input on trade-offs.",
     ].join("\n"),
   };
@@ -177,8 +366,8 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.setStatus("harness", "Clarification in progress...");
 
       const prompt = topic
-        ? `The user wants to clarify the following request: "${topic}"\n\nBegin the clarification process. Follow the clarification skill rules. Ask ONE question using the ask_user_question tool. Dispatch an Explore subagent in parallel to investigate relevant parts of the codebase.`
-        : `The user wants to start a clarification session for their current task.\n\nBegin the clarification process. Follow the clarification skill rules. Ask ONE question using the ask_user_question tool to understand what the user wants to accomplish. Dispatch an Explore subagent in parallel to investigate the codebase.`;
+        ? `The user wants to clarify the following request: "${topic}"\n\nBegin the clarification process. Follow the clarification skill rules. Ask ONE question using the ask_user_question tool. Use the subagent tool in single mode to investigate relevant parts of the codebase in parallel.`
+        : `The user wants to start a clarification session for their current task.\n\nBegin the clarification process. Follow the clarification skill rules. Ask ONE question using the ask_user_question tool to understand what the user wants to accomplish. Use the subagent tool in single mode to investigate the codebase in parallel.`;
 
       pi.sendUserMessage(prompt);
     },
@@ -221,8 +410,8 @@ export default function (pi: ExtensionAPI) {
 
       const topic = args?.trim() || "";
       const prompt = topic
-        ? `Decompose the following complex task into milestones: "${topic}"\n\nFollow the milestone-planning skill rules. First compose a Problem Brief. Then decide which reviewer perspectives are needed for this specific problem (e.g., feasibility, architecture, risk, dependencies, user value — but adapt to the problem). Dispatch all chosen reviewers in parallel using the Agent tool. After all reviewers complete, synthesize their findings into a milestone DAG.`
-        : `Decompose the current complex task into milestones.\n\nFollow the milestone-planning skill rules. First compose a Problem Brief from the current context. Then decide which reviewer perspectives are needed for this specific problem. Dispatch all chosen reviewers in parallel using the Agent tool. After all reviewers complete, synthesize their findings into a milestone DAG.`;
+        ? `Decompose the following complex task into milestones: "${topic}"\n\nFollow the milestone-planning skill rules. First compose a Problem Brief. Then dispatch all 5 reviewer agents (Feasibility, Architecture, Risk, Dependency, User Value) in parallel using the subagent tool's parallel mode. After all reviewers complete, synthesize their findings into a milestone DAG.`
+        : `Decompose the current complex task into milestones.\n\nFollow the milestone-planning skill rules. First compose a Problem Brief from the current context. Then dispatch all 5 reviewer agents (Feasibility, Architecture, Risk, Dependency, User Value) in parallel using the subagent tool's parallel mode. After all reviewers complete, synthesize their findings into a milestone DAG.`;
 
       pi.sendUserMessage(prompt);
     },
