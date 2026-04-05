@@ -1,5 +1,5 @@
 // tests/subagent.test.ts
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   extractFinalOutput,
   mapWithConcurrencyLimit,
@@ -96,6 +96,32 @@ describe("Constants", () => {
 });
 
 describe("resolveDepthConfig", () => {
+  const originalDepth = process.env.PI_SUBAGENT_DEPTH;
+  const originalMaxDepth = process.env.PI_SUBAGENT_MAX_DEPTH;
+  const originalStack = process.env.PI_SUBAGENT_STACK;
+  const originalPreventCycles = process.env.PI_SUBAGENT_PREVENT_CYCLES;
+
+  beforeEach(() => {
+    delete process.env.PI_SUBAGENT_DEPTH;
+    delete process.env.PI_SUBAGENT_MAX_DEPTH;
+    delete process.env.PI_SUBAGENT_STACK;
+    delete process.env.PI_SUBAGENT_PREVENT_CYCLES;
+  });
+
+  afterEach(() => {
+    if (originalDepth === undefined) delete process.env.PI_SUBAGENT_DEPTH;
+    else process.env.PI_SUBAGENT_DEPTH = originalDepth;
+
+    if (originalMaxDepth === undefined) delete process.env.PI_SUBAGENT_MAX_DEPTH;
+    else process.env.PI_SUBAGENT_MAX_DEPTH = originalMaxDepth;
+
+    if (originalStack === undefined) delete process.env.PI_SUBAGENT_STACK;
+    else process.env.PI_SUBAGENT_STACK = originalStack;
+
+    if (originalPreventCycles === undefined) delete process.env.PI_SUBAGENT_PREVENT_CYCLES;
+    else process.env.PI_SUBAGENT_PREVENT_CYCLES = originalPreventCycles;
+  });
+
   it("should return defaults when no env vars set", () => {
     const config = resolveDepthConfig();
     expect(config.currentDepth).toBe(0);
@@ -103,6 +129,20 @@ describe("resolveDepthConfig", () => {
     expect(config.canDelegate).toBe(true);
     expect(config.ancestorStack).toEqual([]);
     expect(config.preventCycles).toBe(true);
+  });
+
+  it("should read explicit env overrides", () => {
+    process.env.PI_SUBAGENT_DEPTH = "1";
+    process.env.PI_SUBAGENT_MAX_DEPTH = "5";
+    process.env.PI_SUBAGENT_STACK = JSON.stringify(["root", "worker"]);
+    process.env.PI_SUBAGENT_PREVENT_CYCLES = "0";
+
+    const config = resolveDepthConfig();
+    expect(config.currentDepth).toBe(1);
+    expect(config.maxDepth).toBe(5);
+    expect(config.canDelegate).toBe(true);
+    expect(config.ancestorStack).toEqual(["root", "worker"]);
+    expect(config.preventCycles).toBe(false);
   });
 });
 
