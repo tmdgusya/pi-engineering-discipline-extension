@@ -5,6 +5,10 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { discoverAgents } from "./agents.js";
 import { runSingleAgent, runParallel, runChain } from "./subagent.js";
+import { loadState, updateState } from "./state.js";
+import { microcompactMessages, getCompactionPrompt, formatCompactSummary } from "./compaction.js";
+import { convertToLlm, serializeConversation } from "@mariozechner/pi-coding-agent";
+import { complete } from "@mariozechner/pi-ai";
 
 // ============================================================
 // Workflow State
@@ -20,6 +24,10 @@ type WorkflowPhase =
   | "ultraplanning";
 
 let currentPhase: WorkflowPhase = "idle";
+let activeGoalDocument: string | null = null;
+
+// State file path
+const STATE_FILE = join(homedir(), ".pi", "extension-state.json");
 
 export default function (pi: ExtensionAPI) {
   const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -194,7 +202,9 @@ export default function (pi: ExtensionAPI) {
       "Use single mode (agent + task) for one-off investigation or exploration tasks.",
       "Use parallel mode (tasks array) to dispatch multiple independent agents concurrently, e.g. codebase reviewers.",
       "Use chain mode (chain array) for sequential pipelines where each step uses {previous} to reference prior output.",
-      "Agents are .md files with YAML frontmatter (name, description, tools, model) in ~/.pi/agent/agents/ (user) or .pi/agents/ (project).",
+      "Bundled agents: 'explorer' (codebase investigation), 'worker' (general execution), 'planner' (architecture design), 'plan-worker' (plan step execution), 'plan-validator' (independent task verification), 'plan-compliance' (pre-task precondition check).",
+      "For run-plan execution: use 'plan-compliance' for pre-task checks, 'plan-worker' for task implementation, 'plan-validator' for independent validation under information barrier.",
+      "For ultraplan reviews: use 'reviewer-feasibility', 'reviewer-architecture', 'reviewer-risk', 'reviewer-dependency', 'reviewer-user-value' in parallel mode.",
       "If the specified agent is not found, the task runs with default pi settings.",
       "Max 8 parallel tasks with 4 concurrent. Chain mode stops on first error.",
     ],
@@ -351,6 +361,127 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ============================================================
+  // context: Microcompaction — truncate old tool results
+  // ============================================================
+
+  pi.on("context", async (event, _ctx) => {
+    const compacted = microcompactMessages(event.messages);
+    const changed = compacted.some((msg, i) => msg !== event.messages[i]);
+    if (!changed) return;
+    return { messages: compacted };
+  });
+
+  // ============================================================
+  // session_before_compact: Phase-aware custom summarization
+  // ============================================================
+
+  pi.on("session_before_compact", async (event, ctx) => {
+    const { preparation, signal } = event;
+    const { messagesToSummarize, turnPrefixMessages, tokensBefore, firstKeptEntryId, previousSummary } = preparation;
+
+    const model = ctx.model;
+    const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+    if (!auth.ok || !auth.apiKey) {
+      ctx.ui.notify("Compaction auth failed, using default compaction", "warning");
+      return;
+    }
+
+    const allMessages = [...messagesToSummarize, ...turnPrefixMessages];
+    if (allMessages.length === 0) return;
+
+    ctx.ui.notify(
+      `Custom compaction: summarizing ${allMessages.length} messages (${tokensBefore.toLocaleString()} tokens)...`,
+      "info",
+    );
+
+    const conversationText = serializeConversation(convertToLlm(allMessages));
+
+    const promptText = getCompactionPrompt(
+      currentPhase,
+      activeGoalDocument,
+      event.customInstructions,
+    );
+
+    const previousContext = previousSummary
+      ? `\n\nPrevious session summary for context:\n${previousSummary}`
+      : "";
+
+    const summaryMessages = [
+      {
+        role: "user" as const,
+        content: [
+          {
+            type: "text" as const,
+            text: `${promptText}${previousContext}\n\n<conversation>\n${conversationText}\n</conversation>`,
+          },
+        ],
+        timestamp: Date.now(),
+      },
+    ];
+
+    try {
+      const response = await complete(
+        model,
+        { messages: summaryMessages },
+        {
+          apiKey: auth.apiKey,
+          headers: auth.headers,
+          maxTokens: 8192,
+          signal,
+        },
+      );
+
+      const summary = response.content
+        .filter((c): c is { type: "text"; text: string } => c.type === "text")
+        .map((c) => c.text)
+        .join("\n");
+
+      if (!summary.trim()) {
+        if (!signal.aborted) {
+          ctx.ui.notify("Compaction summary was empty, using default", "warning");
+        }
+        return;
+      }
+
+      const formattedSummary = formatCompactSummary(summary);
+
+      return {
+        compaction: {
+          summary: formattedSummary,
+          firstKeptEntryId,
+          tokensBefore,
+          details: {
+            phase: currentPhase,
+            activeGoalDocument,
+          },
+        },
+      };
+    } catch (error) {
+      if (signal.aborted) return;
+      const message = error instanceof Error ? error.message : String(error);
+      ctx.ui.notify(`Compaction failed: ${message}`, "error");
+      return;
+    }
+  });
+
+  // ============================================================
+  // session_compact: Persist state from compaction details
+  // ============================================================
+
+  pi.on("session_compact", async (event, _ctx) => {
+    if (event.fromExtension && event.compactionEntry.details) {
+      const details = event.compactionEntry.details as {
+        phase?: string;
+        activeGoalDocument?: string | null;
+      };
+      if (details.phase) currentPhase = details.phase as WorkflowPhase;
+      if (details.activeGoalDocument !== undefined) {
+        activeGoalDocument = details.activeGoalDocument;
+      }
+    }
+  });
+
+  // ============================================================
   // Commands
   // ============================================================
 
@@ -366,6 +497,8 @@ export default function (pi: ExtensionAPI) {
       if (!start) return;
 
       currentPhase = "clarifying";
+      activeGoalDocument = null;
+      updateState(STATE_FILE, { phase: "clarifying", activeGoalDocument: null }).catch(() => {});
       ctx.ui.setStatus("harness", "Clarification in progress...");
 
       const prompt = topic
@@ -387,6 +520,7 @@ export default function (pi: ExtensionAPI) {
       if (!ok) return;
 
       currentPhase = "planning";
+      updateState(STATE_FILE, { phase: "planning" }).catch(() => {});
       ctx.ui.setStatus("harness", "Plan crafting in progress...");
 
       const topic = args?.trim() || "";
@@ -409,6 +543,7 @@ export default function (pi: ExtensionAPI) {
       if (!confirmed) return;
 
       currentPhase = "ultraplanning";
+      updateState(STATE_FILE, { phase: "ultraplanning" }).catch(() => {});
       ctx.ui.setStatus("harness", "Milestone planning in progress...");
 
       const topic = args?.trim() || "";
@@ -462,6 +597,8 @@ export default function (pi: ExtensionAPI) {
     description: "Reset the workflow phase to idle (clears clarify/plan/ultraplan mode)",
     handler: async (_args, ctx) => {
       currentPhase = "idle";
+      activeGoalDocument = null;
+      updateState(STATE_FILE, { phase: "idle", activeGoalDocument: null }).catch(() => {});
       ctx.ui.setStatus("harness", undefined);
       ctx.ui.notify("Workflow phase reset to idle.", "info");
     },
@@ -472,7 +609,10 @@ export default function (pi: ExtensionAPI) {
   // ============================================================
 
   pi.on("session_start", async (_event, ctx) => {
-    currentPhase = "idle";
+    const saved = await loadState(STATE_FILE);
+    currentPhase = saved.phase;
+    activeGoalDocument = saved.activeGoalDocument;
+
     ctx.ui.notify(
       "Agentic Harness loaded: /clarify, /plan, /ultraplan, /ask, /reset-phase",
       "info"

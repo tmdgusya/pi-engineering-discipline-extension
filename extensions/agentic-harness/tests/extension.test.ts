@@ -44,7 +44,7 @@ describe("Extension Registration", () => {
     expect(tool.name).toBe("subagent");
     expect(tool.promptSnippet).toBeDefined();
     expect(tool.promptGuidelines).toBeDefined();
-    expect(tool.promptGuidelines.length).toBe(6);
+    expect(tool.promptGuidelines.length).toBe(8);
   });
 
   it("should register all commands", () => {
@@ -65,6 +65,9 @@ describe("Extension Registration", () => {
     expect(events.has("resources_discover")).toBe(true);
     expect(events.has("before_agent_start")).toBe(true);
     expect(events.has("session_start")).toBe(true);
+    expect(events.has("context")).toBe(true);
+    expect(events.has("session_before_compact")).toBe(true);
+    expect(events.has("session_compact")).toBe(true);
   });
 });
 
