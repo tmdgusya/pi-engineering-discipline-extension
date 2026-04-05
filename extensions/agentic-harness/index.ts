@@ -690,6 +690,25 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  pi.registerCommand("ask", {
+    description: "Manual smoke test for the ask_user_question tool",
+    handler: async (args, ctx) => {
+      const topic = args?.trim() || "Ask me one focused question using the ask_user_question tool.";
+      const confirmed = await ctx.ui.confirm(
+        "Run /ask",
+        "The agent will send a manual prompt that requires one ask_user_question tool call.\n\nProceed?"
+      );
+      if (!confirmed) return;
+
+      currentPhase = "idle";
+      ctx.ui.setStatus("harness", "Manual ask_user_question test in progress...");
+
+      pi.sendUserMessage(
+        `Manual tool test: use the ask_user_question tool exactly once, then stop. User context: "${topic}"`
+      );
+    },
+  });
+
   // ============================================================
   // /reset-phase — reset workflow phase to idle
   // ============================================================

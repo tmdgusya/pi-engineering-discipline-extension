@@ -240,6 +240,30 @@ describe("/plan Command", () => {
   });
 });
 
+describe("/ask Command", () => {
+  it("should register /ask and delegate a manual ask_user_question prompt", async () => {
+    const { mockPi, commands } = createMockPi();
+    extension(mockPi);
+
+    const ask = commands.get("ask");
+    expect(ask).toBeDefined();
+
+    const mockCtx: any = {
+      ui: {
+        confirm: vi.fn().mockResolvedValue(true),
+        setStatus: vi.fn(),
+      },
+    };
+
+    await ask.handler("What should I work on next?", mockCtx);
+
+    expect(mockPi.sendUserMessage).toHaveBeenCalledTimes(1);
+    const prompt = mockPi.sendUserMessage.mock.calls[0][0];
+    expect(prompt).toContain("ask_user_question");
+    expect(prompt).toContain("What should I work on next?");
+  });
+});
+
 describe("Goal Document Tracking", () => {
   it("should register tool_result event handler", () => {
     const { mockPi, events } = createMockPi();
