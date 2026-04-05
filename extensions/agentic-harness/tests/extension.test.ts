@@ -1,0 +1,220 @@
+import { describe, it, expect, vi } from "vitest";
+import extension from "../index.js";
+
+function createMockPi() {
+  const tools = new Map<string, any>();
+  const commands = new Map<string, any>();
+  const events = new Map<string, any[]>();
+
+  const mockPi: any = {
+    registerTool: (def: any) => {
+      tools.set(def.name, def);
+    },
+    registerCommand: (name: string, def: any) => {
+      commands.set(name, def);
+    },
+    on: (event: string, handler: any) => {
+      if (!events.has(event)) events.set(event, []);
+      events.get(event)!.push(handler);
+    },
+    sendUserMessage: vi.fn(),
+  };
+
+  return { mockPi, tools, commands, events };
+}
+
+describe("Extension Registration", () => {
+  it("should register ask_user_question tool", () => {
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    const tool = tools.get("ask_user_question");
+    expect(tool).toBeDefined();
+    expect(tool.promptSnippet).toBeDefined();
+    expect(tool.promptGuidelines).toBeDefined();
+    expect(tool.promptGuidelines.length).toBeGreaterThan(0);
+  });
+
+  it("should register all commands", () => {
+    const { mockPi, commands } = createMockPi();
+    extension(mockPi);
+
+    expect(commands.has("clarify")).toBe(true);
+    expect(commands.has("plan")).toBe(true);
+    expect(commands.has("ultraplan")).toBe(true);
+    expect(commands.has("ask")).toBe(true);
+    expect(commands.has("reset-phase")).toBe(true);
+  });
+
+  it("should register event handlers", () => {
+    const { mockPi, events } = createMockPi();
+    extension(mockPi);
+
+    expect(events.has("resources_discover")).toBe(true);
+    expect(events.has("before_agent_start")).toBe(true);
+    expect(events.has("session_start")).toBe(true);
+  });
+});
+
+describe("ask_user_question Tool", () => {
+  it("should return user answer for free-text input", async () => {
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    const tool = tools.get("ask_user_question");
+    const mockCtx: any = {
+      ui: {
+        input: vi.fn().mockResolvedValue("user typed this"),
+        select: vi.fn(),
+      },
+    };
+
+    const result = await tool.execute(
+      "call-1",
+      { question: "What do you want?" },
+      undefined,
+      undefined,
+      mockCtx
+    );
+
+    expect(result.content[0].text).toBe("user typed this");
+    expect(mockCtx.ui.input).toHaveBeenCalledWith(
+      "What do you want?",
+      undefined,
+      { signal: undefined }
+    );
+  });
+
+  it("should use select UI when choices are provided", async () => {
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    const tool = tools.get("ask_user_question");
+    const mockCtx: any = {
+      ui: {
+        input: vi.fn(),
+        select: vi.fn().mockResolvedValue("Option A"),
+      },
+    };
+
+    const result = await tool.execute(
+      "call-2",
+      { question: "Pick one", choices: ["Option A", "Option B"] },
+      undefined,
+      undefined,
+      mockCtx
+    );
+
+    expect(result.content[0].text).toBe("Option A");
+    // Should auto-append "직접 입력하기"
+    const selectChoices = mockCtx.ui.select.mock.calls[0][1];
+    expect(selectChoices).toContain("직접 입력하기");
+  });
+
+  it("should switch to input when 직접 입력하기 is selected", async () => {
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    const tool = tools.get("ask_user_question");
+    const mockCtx: any = {
+      ui: {
+        input: vi.fn().mockResolvedValue("custom answer"),
+        select: vi.fn().mockResolvedValue("직접 입력하기"),
+      },
+    };
+
+    const result = await tool.execute(
+      "call-3",
+      { question: "Pick one", choices: ["A", "B"] },
+      undefined,
+      undefined,
+      mockCtx
+    );
+
+    expect(result.content[0].text).toBe("custom answer");
+    expect(mockCtx.ui.input).toHaveBeenCalled();
+  });
+
+  it("should handle user cancellation", async () => {
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    const tool = tools.get("ask_user_question");
+    const mockCtx: any = {
+      ui: {
+        input: vi.fn().mockResolvedValue(undefined),
+        select: vi.fn(),
+      },
+    };
+
+    const result = await tool.execute(
+      "call-4",
+      { question: "Will you cancel?" },
+      undefined,
+      undefined,
+      mockCtx
+    );
+
+    expect(result.content[0].text).toBe("User cancelled the question.");
+  });
+});
+
+describe("before_agent_start Event", () => {
+  it("should not modify system prompt when phase is idle", async () => {
+    const { mockPi, events } = createMockPi();
+    extension(mockPi);
+
+    const handlers = events.get("before_agent_start")!;
+    const result = await handlers[0](
+      { type: "before_agent_start", prompt: "test", systemPrompt: "base" },
+      {} as any
+    );
+
+    // idle phase returns no guidance (undefined or empty systemPrompt addition)
+    expect(result?.systemPrompt || "base").toBe("base");
+  });
+});
+
+describe("/clarify Command", () => {
+  it("should delegate to agent via sendUserMessage", async () => {
+    const { mockPi, commands } = createMockPi();
+    extension(mockPi);
+
+    const clarify = commands.get("clarify");
+    const mockCtx: any = {
+      ui: {
+        confirm: vi.fn().mockResolvedValue(true),
+        setStatus: vi.fn(),
+      },
+    };
+
+    await clarify.handler("login feature", mockCtx);
+
+    expect(mockPi.sendUserMessage).toHaveBeenCalledTimes(1);
+    const prompt = mockPi.sendUserMessage.mock.calls[0][0];
+    expect(prompt).toContain("login feature");
+    expect(prompt).toContain("clarification");
+    expect(prompt).toContain("ask_user_question");
+  });
+});
+
+describe("/plan Command", () => {
+  it("should delegate to agent via sendUserMessage", async () => {
+    const { mockPi, commands } = createMockPi();
+    extension(mockPi);
+
+    const plan = commands.get("plan");
+    const mockCtx: any = {
+      ui: {
+        confirm: vi.fn().mockResolvedValue(true),
+        setStatus: vi.fn(),
+      },
+    };
+
+    await plan.handler("", mockCtx);
+
+    expect(mockPi.sendUserMessage).toHaveBeenCalledTimes(1);
+    const prompt = mockPi.sendUserMessage.mock.calls[0][0];
+    expect(prompt).toContain("plan-crafting");
+  });
+});
