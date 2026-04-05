@@ -44,7 +44,7 @@ describe("Extension Registration", () => {
     expect(tool.name).toBe("subagent");
     expect(tool.promptSnippet).toBeDefined();
     expect(tool.promptGuidelines).toBeDefined();
-    expect(tool.promptGuidelines.length).toBe(6);
+    expect(tool.promptGuidelines.length).toBe(7);
     expect(tool.renderCall).toBeTypeOf("function");
     expect(tool.renderResult).toBeTypeOf("function");
   });
@@ -247,5 +247,29 @@ describe("Goal Document Tracking", () => {
 
     expect(events.has("tool_result")).toBe(true);
     expect(events.get("tool_result")!.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Validator Information Barrier", () => {
+  it("should register planFile and planTaskId in subagent params", () => {
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    const subagentTool = tools.get("subagent");
+    expect(subagentTool).toBeDefined();
+    const schema = subagentTool!.parameters;
+    // Verify schema has planFile and planTaskId properties
+    expect(schema.properties.planFile).toBeDefined();
+    expect(schema.properties.planTaskId).toBeDefined();
+  });
+
+  it("should include plan-validator guideline in promptGuidelines", () => {
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    const subagentTool = tools.get("subagent");
+    expect(subagentTool).toBeDefined();
+    const guidelines = subagentTool!.promptGuidelines || [];
+    expect(guidelines.some((g: string) => g.includes("planFile") && g.includes("planTaskId"))).toBe(true);
   });
 });

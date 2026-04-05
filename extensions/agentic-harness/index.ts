@@ -8,6 +8,9 @@ import { runAgent, mapWithConcurrencyLimit, MAX_CONCURRENCY, MAX_PARALLEL_TASKS,
 import { emptyUsage, isResultError, isResultSuccess, getResultSummaryText, getFinalOutput, type SingleResult, type SubagentDetails } from "./types.js";
 import { renderCall, renderResult } from "./render.js";
 import { loadState, updateState } from "./state.js";
+import { parsePlan } from "./plan-parser.js";
+import { buildValidatorPrompt } from "./validator-template.js";
+import { readFile } from "fs/promises";
 import { microcompactMessages, getCompactionPrompt, formatCompactSummary } from "./compaction.js";
 import { convertToLlm, serializeConversation } from "@mariozechner/pi-coding-agent";
 import { complete } from "@mariozechner/pi-ai";
@@ -34,6 +37,7 @@ const STATE_FILE = join(homedir(), ".pi", "extension-state.json");
 export default function (pi: ExtensionAPI) {
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const BUNDLED_AGENTS_DIR = join(__dirname, "agents");
+  const BUNDLED_SKILLS_DIR = join(__dirname, "skills");
 
   // ============================================================
   // ask_user_question Tool
@@ -148,6 +152,8 @@ export default function (pi: ExtensionAPI) {
       default: "user",
     })),
     cwd: Type.Optional(Type.String({ description: "Working directory for single mode" })),
+    planFile: Type.Optional(Type.String({ description: "Path to plan file. Required when agent is plan-validator — the validator prompt is built from this file, not from the task field." })),
+    planTaskId: Type.Optional(Type.Number({ description: "Task number in the plan file to validate (e.g. 1 for Task 1). Required when agent is plan-validator." })),
   });
 
   const makeDetails = (mode: "single" | "parallel") => (results: SingleResult[]): SubagentDetails => ({ mode, results });
@@ -167,6 +173,7 @@ export default function (pi: ExtensionAPI) {
         "For codebase exploration: use 'explorer'. For general execution: use 'worker'. For plan execution: use 'plan-compliance' → 'plan-worker' → 'plan-validator'.",
         "For ultraplan milestone reviews: dispatch all 5 reviewers in parallel: reviewer-feasibility, reviewer-architecture, reviewer-risk, reviewer-dependency, reviewer-user-value.",
         "Max 8 parallel tasks with 4 concurrent. Chain mode stops on first error.",
+        "When calling plan-validator, ALWAYS provide planFile (path to the plan .md file) and planTaskId (the task number to validate). The validator prompt will be built from the plan file automatically — you do not need to compose it. Example: { agent: 'plan-validator', task: 'validate', planFile: 'docs/.../plan.md', planTaskId: 3 }",
       ],
       parameters: SubagentParams,
 
@@ -302,10 +309,27 @@ export default function (pi: ExtensionAPI) {
 
         // Single mode
         if (agent && task) {
+          let effectiveTask = task;
+
+          // Validator information barrier: replace LLM-composed task with
+          // code-generated prompt built directly from the plan file.
+          if (agent === "plan-validator" && params.planFile && params.planTaskId != null) {
+            try {
+              const planContent = await readFile(params.planFile, "utf-8");
+              const parsed = parsePlan(planContent);
+              const planTask = parsed.tasks.find((t) => t.id === params.planTaskId);
+              if (planTask) {
+                effectiveTask = buildValidatorPrompt(planTask, parsed.verificationCommand);
+              }
+            } catch {
+              // If plan file can't be read/parsed, fall through to LLM-composed task
+            }
+          }
+
           const result = await runAgent({
             agent: findAgent(agent),
             agentName: agent,
-            task,
+            task: effectiveTask,
             cwd: cwd || defaultCwd,
             depthConfig,
             signal,
@@ -335,14 +359,12 @@ export default function (pi: ExtensionAPI) {
   }
 
   // ============================================================
-  // resources_discover: Register engineering-discipline skills
+  // resources_discover: Register bundled skills
   // ============================================================
-
-  const SKILLS_DIR = join(homedir(), "engineering-discipline", "skills");
 
   pi.on("resources_discover", async (_event, _ctx) => {
     return {
-      skillPaths: [SKILLS_DIR],
+      skillPaths: [BUNDLED_SKILLS_DIR],
     };
   });
 
@@ -414,6 +436,10 @@ export default function (pi: ExtensionAPI) {
   // ============================================================
 
   pi.on("session_before_compact", async (event, ctx) => {
+    // Skip custom compaction for idle phase with no active goal document —
+    // let pi's default compaction handle simple conversations.
+    if (currentPhase === "idle" && !activeGoalDocument) return;
+
     const { preparation, signal } = event;
     const { messagesToSummarize, turnPrefixMessages, tokensBefore, firstKeptEntryId, previousSummary } = preparation;
 
