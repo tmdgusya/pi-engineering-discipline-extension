@@ -16,6 +16,7 @@ export default function (pi: ExtensionAPI) {
       if (!constraints) return;
 
       ctx.ui.setStatus("harness", "Exploring codebase & synthesizing...");
+      pi.emit("workflow:status", { status: "thinking" });
       
       pi.sendUserMessage(
         `I need to clarify a task.\nGoal: ${goal}\nScope: ${scope}\nConstraints: ${constraints}\n\nPlease generate a Context Brief based on your analysis.`
@@ -33,6 +34,7 @@ export default function (pi: ExtensionAPI) {
       if (!ok) return;
 
       ctx.ui.setStatus("harness", "Crafting implementation plan...");
+      pi.emit("workflow:status", { status: "planning" });
       
       pi.sendUserMessage(
         `Please write an executable implementation plan for the current context following the plan-crafting skill rules. Ensure there are no placeholders and full verification is included.`
@@ -52,6 +54,8 @@ export default function (pi: ExtensionAPI) {
       );
       
       if (!confirmed) return;
+
+      pi.emit("workflow:status", { status: "planning" });
 
       // Launch Custom TUI Dashboard to monitor parallel agents
       const reports = await ctx.ui.custom<Record<string, string>>((tui, theme, keybindings, done) => {
