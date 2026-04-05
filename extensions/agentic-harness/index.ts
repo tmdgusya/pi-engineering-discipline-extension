@@ -700,7 +700,7 @@ export default function (pi: ExtensionAPI) {
           "Thanks for using ROACH PI! Would you like to star the repository? ⭐",
         );
         if (star) {
-          execSync("gh repo star tmdgusya/roach-pi", { stdio: "pipe" });
+          execSync("gh api user/starred/tmdgusya/roach-pi -X PUT", { stdio: "pipe" });
           ctx.ui.notify("Thanks for the star! ⭐", "info");
         }
       } catch {
