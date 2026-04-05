@@ -17,6 +17,7 @@ import { readFile } from "fs/promises";
 import { microcompactMessages, getCompactionPrompt, formatCompactSummary } from "./compaction.js";
 import { convertToLlm, serializeConversation } from "@mariozechner/pi-coding-agent";
 import { complete } from "@mariozechner/pi-ai";
+import { isDisciplineAgent, augmentAgentWithKarpathy, getSlopCleanerTask } from "./discipline.js";
 
 // ============================================================
 // Workflow State
@@ -219,8 +220,11 @@ export default function (pi: ExtensionAPI) {
           for (let i = 0; i < chain.length; i++) {
             const step = chain[i];
             const taskWithContext = step.task.replace(/\{previous\}/g, previousOutput);
+            const chainAgent = isDisciplineAgent(step.agent)
+              ? augmentAgentWithKarpathy(findAgent(step.agent))
+              : findAgent(step.agent);
             const result = await runAgent({
-              agent: findAgent(step.agent),
+              agent: chainAgent,
               agentName: step.agent,
               task: taskWithContext,
               cwd: step.cwd || defaultCwd,
@@ -283,8 +287,11 @@ export default function (pi: ExtensionAPI) {
           let results: SingleResult[];
           try {
             results = await mapWithConcurrencyLimit(tasks, MAX_CONCURRENCY, async (t, index) => {
+              const parallelAgent = isDisciplineAgent(t.agent)
+                ? augmentAgentWithKarpathy(findAgent(t.agent))
+                : findAgent(t.agent);
               const result = await runAgent({
-                agent: findAgent(t.agent),
+                agent: parallelAgent,
                 agentName: t.agent,
                 task: t.task,
                 cwd: t.cwd || defaultCwd,
@@ -335,8 +342,11 @@ export default function (pi: ExtensionAPI) {
             }
           }
 
+          const singleAgent = isDisciplineAgent(agent)
+            ? augmentAgentWithKarpathy(findAgent(agent))
+            : findAgent(agent);
           const result = await runAgent({
-            agent: findAgent(agent),
+            agent: singleAgent,
             agentName: agent,
             task: effectiveTask,
             cwd: cwd || defaultCwd,
@@ -345,6 +355,31 @@ export default function (pi: ExtensionAPI) {
             onUpdate,
             makeDetails: makeDetails("single"),
           });
+
+          // Discipline: auto-spawn slop-cleaner after successful code-writing agent
+          if (isDisciplineAgent(agent) && isResultSuccess(result)) {
+            const slopCleaner = findAgent("slop-cleaner");
+            if (slopCleaner) {
+              const cleanResult = await runAgent({
+                agent: slopCleaner,
+                agentName: "slop-cleaner",
+                task: getSlopCleanerTask(),
+                cwd: cwd || defaultCwd,
+                depthConfig,
+                signal,
+                onUpdate,
+                makeDetails: makeDetails("single"),
+              });
+              const mainText = getResultSummaryText(result);
+              const cleanText = isResultSuccess(cleanResult)
+                ? `\n\n[slop-cleaner] completed: ${getResultSummaryText(cleanResult)}`
+                : `\n\n[slop-cleaner] failed: ${getResultSummaryText(cleanResult)}`;
+              return {
+                content: [{ type: "text" as const, text: mainText + cleanText }],
+                details: makeDetails("single")([result, cleanResult]),
+              };
+            }
+          }
 
           if (isResultError(result)) {
             return {
