@@ -1,5 +1,44 @@
 # Domain Dictionary 개발 노트
 
+## 실험적 기능 (Experimental Feature)
+
+⚠️ **이 확장 기능은 실험적입니다.** 기본적으로 비활성화되어 있으며, 환경변수를 통해 활성화해야 사용할 수 있습니다.
+
+### 활성화 방법
+
+환경변수 `PI_ENABLE_DOMAIN_DICT`를 `1` 또는 `true`로 설정하세요.
+
+#### 임시로 켜기 (한 번)
+```bash
+PI_ENABLE_DOMAIN_DICT=1 pi
+```
+
+#### 영구적으로 켜기 (~/.bashrc 또는 ~/.zshrc)
+```bash
+export PI_ENABLE_DOMAIN_DICT=1
+```
+
+### 비활성화 상태
+
+- 환경변수가 설정되지 않았거나 `0`/`false`인 경우:
+  - 확장 기능이 **조용히 로드되지 않음** (에러 없음)
+  - `/dict`, `/dict-build` 명령 사용 불가
+  - pi 시작 시 관련 로그 없음
+
+### 코드에서의 체크
+
+```typescript
+// index.ts
+const isEnabled = process.env.PI_ENABLE_DOMAIN_DICT === '1' || 
+                  process.env.PI_ENABLE_DOMAIN_DICT === 'true';
+
+if (!isEnabled) {
+  return; // 실험적 기능이 꺼져있으면 로드하지 않음
+}
+```
+
+---
+
 ## UI 출력 가이드
 
 ### ⚠️ console.log 사용 금지
