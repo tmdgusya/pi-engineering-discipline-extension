@@ -171,16 +171,17 @@ export class JobScheduler {
 
     job.isExecuting = true;
     const timeoutMs = Math.max(job.intervalMs * 2, 60_000);
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
     try {
       await Promise.race([
         this.onPrompt(job.prompt, job.abortController.signal),
-        new Promise<never>((_, reject) =>
-          setTimeout(
+        new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(
             () => reject(new LoopError(`Job ${jobId} timed out after ${timeoutMs}ms`, 'JOB_TIMEOUT')),
             timeoutMs
-          )
-        ),
+          );
+        }),
       ]);
 
       job.runCount++;
@@ -199,6 +200,7 @@ export class JobScheduler {
         }
       }
     } finally {
+      if (timeoutHandle !== null) clearTimeout(timeoutHandle);
       job.isExecuting = false;
     }
   }
