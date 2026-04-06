@@ -1,5 +1,3 @@
-// extensions/session-loop/types.ts
-
 export interface LoopJob {
   id: string;
   intervalMs: number;

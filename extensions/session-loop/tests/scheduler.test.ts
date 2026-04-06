@@ -1,5 +1,5 @@
 // extensions/session-loop/tests/scheduler.test.ts
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { parseInterval, JobScheduler } from '../scheduler.js';
 import { LoopError } from '../types.js';
 
@@ -77,14 +77,14 @@ describe('parseInterval', () => {
 
 describe('JobScheduler', () => {
   let scheduler: JobScheduler;
-  let executeFn: ReturnType<typeof vi.fn>;
-  let errorFn: ReturnType<typeof vi.fn>;
+  let executeFn: Mock;
+  let errorFn: Mock;
 
   beforeEach(() => {
     vi.useFakeTimers();
     executeFn = vi.fn().mockResolvedValue(undefined);
     errorFn = vi.fn();
-    scheduler = new JobScheduler(executeFn, errorFn);
+    scheduler = new JobScheduler(executeFn as any, errorFn as any);
   });
 
   afterEach(() => {

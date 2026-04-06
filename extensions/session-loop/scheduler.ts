@@ -1,4 +1,3 @@
-// extensions/session-loop/scheduler.ts
 import { LoopJob, LoopJobInternal, ParsedInterval, LoopError, SchedulerStats } from './types.js';
 
 const MIN_INTERVAL_MS = 1000;
@@ -110,13 +109,12 @@ export class JobScheduler {
 
     job.timerId = setInterval(() => {
       this.executeJob(jobId).catch(err => {
-        console.error(`[session-loop] Interval execution of ${jobId} failed:`, err);
+        console.error(`Interval execution of ${jobId} failed:`, err);
       });
     }, milliseconds);
 
-    // Fire immediately (first run), fire-and-forget
     this.executeJob(jobId).catch(err => {
-      console.error(`[session-loop] First execution of ${jobId} failed:`, err);
+      console.error(`First execution of ${jobId} failed:`, err);
     });
 
     return this.toPublicJob(job);
@@ -145,7 +143,7 @@ export class JobScheduler {
     }
 
     this.jobs.clear();
-    console.log(`[session-loop] stopAll: Aborted ${stoppedJobs.length} jobs, timers cleared`);
+    console.log(`stopAll: Aborted ${stoppedJobs.length} jobs, timers cleared`);
 
     return stoppedJobs;
   }
@@ -163,10 +161,7 @@ export class JobScheduler {
     const job = this.jobs.get(jobId);
     if (!job) return;
 
-    // Guard: skip if already executing (prevents overlapping runs from setInterval)
-    // Safe in single-threaded JS — no race between check and set within the same microtask
     if (job.isExecuting) {
-      console.log(`[session-loop] Skipping job ${jobId}: still executing`);
       return;
     }
 
@@ -175,9 +170,6 @@ export class JobScheduler {
     }
 
     job.isExecuting = true;
-    const startTime = Date.now();
-
-    // Timeout: 2x interval or 60s minimum, whichever is larger
     const timeoutMs = Math.max(job.intervalMs * 2, 60_000);
 
     try {
@@ -194,18 +186,16 @@ export class JobScheduler {
       job.runCount++;
       job.lastRunAt = new Date();
       job.nextRunAt = new Date(Date.now() + job.intervalMs);
-
-      console.log(`[session-loop] Job ${jobId} executed successfully (${Date.now() - startTime}ms)`);
     } catch (error) {
       job.errorCount++;
       const err = error instanceof Error ? error : new Error(String(error));
-      console.error(`[session-loop] Job ${jobId} failed:`, err.message);
+      console.error(`Job ${jobId} failed:`, err.message);
 
       if (this.onError) {
         try {
           await Promise.resolve(this.onError(jobId, err));
-        } catch (cbError) {
-          console.error('[session-loop] Error in error callback:', cbError);
+        } catch {
+          // ignore callback errors
         }
       }
     } finally {
