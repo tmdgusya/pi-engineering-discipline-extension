@@ -11,7 +11,8 @@
     "extensions": [
       "extensions/agentic-harness/index.ts",
       "extensions/hud-dashboard/src/index.ts",
-      "extensions/session-loop/index.ts"
+      "extensions/session-loop/index.ts",
+      "extensions/domain-dictionary/index.ts"
     ]
   },
   "dependencies": {
