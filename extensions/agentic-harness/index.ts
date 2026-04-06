@@ -730,60 +730,68 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  const setupHandler = async (_args: string, ctx: any) => {
+    const settingsPath = join(homedir(), ".pi", "agent", "settings.json");
+
+    let current: Record<string, unknown> = {};
+    try {
+      const raw = await readFile(settingsPath, "utf-8");
+      current = JSON.parse(raw);
+    } catch {
+    }
+
+    if (current.quietStartup === true) {
+      ctx.ui.notify("Settings already configured — quietStartup is true.", "info");
+      return;
+    }
+
+    const ok = await ctx.ui.confirm(
+      "Setup: Configure Recommended Settings",
+      [
+        "This will add \"quietStartup\": true to your settings.json:",
+        `  ${settingsPath}`,
+        "",
+        "This hides the default Skills/Extensions/Themes listing at startup.",
+        "The ROACH PI banner takes over instead.",
+        "",
+        "Proceed?",
+      ].join("\n"),
+    );
+    if (!ok) return;
+
+    const updated = { ...current, quietStartup: true };
+    await mkdir(dirname(settingsPath), { recursive: true });
+    await writeFile(settingsPath, JSON.stringify(updated, null, 2) + "\n");
+
+    ctx.ui.notify("Settings updated — quietStartup is now true. Restart pi to see the effect.", "info");
+
+    // Ask to star the repository if gh is available
+    try {
+      const { execSync } = await import("child_process");
+      execSync("gh auth status", { stdio: "pipe", timeout: 3000 });
+      const star = await ctx.ui.confirm(
+        "Star roach-pi on GitHub?",
+        "Thanks for using ROACH PI! Would you like to star the repository? ⭐",
+      );
+      if (star) {
+        execSync("gh api user/starred/tmdgusya/roach-pi -X PUT", { stdio: "pipe" });
+        ctx.ui.notify("Thanks for the star! ⭐", "info");
+      }
+    } catch {
+      // gh not available or not authenticated — skip silently
+    }
+  };
+
+  pi.registerCommand("init", {
+    description:
+      "Configure recommended settings — sets quietStartup: true in ~/.pi/agent/settings.json",
+    handler: setupHandler,
+  });
+
   pi.registerCommand("setup", {
     description:
       "Configure recommended settings — sets quietStartup: true in ~/.pi/agent/settings.json",
-    handler: async (_args, ctx) => {
-      const settingsPath = join(homedir(), ".pi", "agent", "settings.json");
-
-      let current: Record<string, unknown> = {};
-      try {
-        const raw = await readFile(settingsPath, "utf-8");
-        current = JSON.parse(raw);
-      } catch {
-      }
-
-      if (current.quietStartup === true) {
-        ctx.ui.notify("Settings already configured — quietStartup is true.", "info");
-        return;
-      }
-
-      const ok = await ctx.ui.confirm(
-        "Setup: Configure Recommended Settings",
-        [
-          "This will add \"quietStartup\": true to your settings.json:",
-          `  ${settingsPath}`,
-          "",
-          "This hides the default Skills/Extensions/Themes listing at startup.",
-          "The ROACH PI banner takes over instead.",
-          "",
-          "Proceed?",
-        ].join("\n"),
-      );
-      if (!ok) return;
-
-      const updated = { ...current, quietStartup: true };
-      await mkdir(dirname(settingsPath), { recursive: true });
-      await writeFile(settingsPath, JSON.stringify(updated, null, 2) + "\n");
-
-      ctx.ui.notify("Settings updated — quietStartup is now true. Restart pi to see the effect.", "info");
-
-      // Ask to star the repository if gh is available
-      try {
-        const { execSync } = await import("child_process");
-        execSync("gh auth status", { stdio: "pipe", timeout: 3000 });
-        const star = await ctx.ui.confirm(
-          "Star roach-pi on GitHub?",
-          "Thanks for using ROACH PI! Would you like to star the repository? ⭐",
-        );
-        if (star) {
-          execSync("gh api user/starred/tmdgusya/roach-pi -X PUT", { stdio: "pipe" });
-          ctx.ui.notify("Thanks for the star! ⭐", "info");
-        }
-      } catch {
-        // gh not available or not authenticated — skip silently
-      }
-    },
+    handler: setupHandler,
   });
 
   pi.registerCommand("reset-phase", {
