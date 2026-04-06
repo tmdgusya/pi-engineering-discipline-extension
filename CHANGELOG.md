@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.1](https://github.com/tmdgusya/roach-pi/compare/v1.0.0...v1.0.1) (2026-04-06)
+
+### Bug Fixes
+
+* **ci:** sync plugin version to v1.0.0 ([a2f1c93](https://github.com/tmdgusya/roach-pi/commit/a2f1c931b99a93d169a14a0a3cbf755c798ad289))
+* **ci:** use plugin package.json as primary version source ([04542a4](https://github.com/tmdgusya/roach-pi/commit/04542a49947d2e97c8b4c8f6ac194f67ed8e2e87))
+
 ## 1.0.0 (2026-04-06)
 
 ### Features
