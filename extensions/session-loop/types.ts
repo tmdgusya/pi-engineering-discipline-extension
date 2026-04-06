@@ -9,7 +9,7 @@ export interface LoopJob {
   nextRunAt: Date | null;
 }
 
-export interface LoopJobInternal extends LoopJob {
+export interface JobInternal extends LoopJob {
   timerId: ReturnType<typeof setInterval> | null;
   isExecuting: boolean;
   abortController: AbortController;
@@ -37,7 +37,6 @@ export class LoopError extends Error {
     public readonly code:
       | 'INVALID_INTERVAL'
       | 'JOB_NOT_FOUND'
-      | 'JOB_EXECUTION_FAILED'
       | 'MAX_JOBS_EXCEEDED'
       | 'JOB_TIMEOUT'
   ) {

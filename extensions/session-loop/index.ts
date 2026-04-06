@@ -7,7 +7,7 @@ export default function sessionLoopExtension(pi: ExtensionAPI) {
 
   const scheduler = new JobScheduler(
     async (prompt, _signal) => {
-      pi.sendUserMessage(prompt);
+      pi.sendUserMessage(prompt, { deliverAs: 'followUp' });
     },
     async (jobId, error) => {
       console.error(`Job ${jobId} error:`, error.message);

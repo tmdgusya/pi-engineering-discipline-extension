@@ -1,4 +1,4 @@
-import { LoopJob, LoopJobInternal, ParsedInterval, LoopError, SchedulerStats } from './types.js';
+import { LoopJob, JobInternal, ParsedInterval, LoopError, SchedulerStats } from './types.js';
 
 const MIN_INTERVAL_MS = 1000;
 const MAX_INTERVAL_MS = 86400000 * 365;
@@ -41,16 +41,16 @@ export function parseInterval(input: string): ParsedInterval {
 }
 
 export class JobScheduler {
-  private jobs = new Map<string, LoopJobInternal>();
+  private jobs = new Map<string, JobInternal>();
   private jobIdCounter = 0;
-  private onExecutePrompt: (prompt: string, signal: AbortSignal) => Promise<void>;
+  private onPrompt: (prompt: string, signal: AbortSignal) => Promise<void>;
   private onError?: (jobId: string, error: Error) => void | Promise<void>;
 
   constructor(
-    onExecutePrompt: (prompt: string, signal: AbortSignal) => Promise<void>,
+    onPrompt: (prompt: string, signal: AbortSignal) => Promise<void>,
     onError?: (jobId: string, error: Error) => void | Promise<void>
   ) {
-    this.onExecutePrompt = onExecutePrompt;
+    this.onPrompt = onPrompt;
     this.onError = onError;
   }
 
@@ -91,7 +91,7 @@ export class JobScheduler {
     const abortController = new AbortController();
     const now = new Date();
 
-    const job: LoopJobInternal = {
+    const job: JobInternal = {
       id: jobId,
       intervalMs: milliseconds,
       prompt: prompt.trim(),
@@ -174,7 +174,7 @@ export class JobScheduler {
 
     try {
       await Promise.race([
-        this.onExecutePrompt(job.prompt, job.abortController.signal),
+        this.onPrompt(job.prompt, job.abortController.signal),
         new Promise<never>((_, reject) =>
           setTimeout(
             () => reject(new LoopError(`Job ${jobId} timed out after ${timeoutMs}ms`, 'JOB_TIMEOUT')),
@@ -203,7 +203,7 @@ export class JobScheduler {
     }
   }
 
-  private toPublicJob(job: LoopJobInternal): LoopJob {
+  private toPublicJob(job: JobInternal): LoopJob {
     return {
       id: job.id,
       intervalMs: job.intervalMs,
