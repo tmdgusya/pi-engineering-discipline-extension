@@ -1,6 +1,6 @@
 import { execSync } from 'child_process';
+import { DictionaryError } from './types.js';
 import type { ParsedCommit, DomainFile } from './types.js';
-import { DictError } from './types.js';
 
 const CONVENTIONAL_COMMIT_RE = /^(\w+)(?:\(([^)]+)\))?!?:\s/;
 
@@ -75,11 +75,6 @@ export function extractDomainsFromCommits(
   return result;
 }
 
-/**
- * Run git log and return parsed commits.
- * Uses --name-only to get file lists per commit.
- * Language-agnostic — works with any file type.
- */
 export function getGitCommits(cwd: string): ParsedCommit[] {
   try {
     const raw = execSync(
@@ -88,7 +83,7 @@ export function getGitCommits(cwd: string): ParsedCommit[] {
     );
     return parseGitLog(raw);
   } catch (err) {
-    throw new DictError(
+    throw new DictionaryError(
       `Failed to read git log: ${err instanceof Error ? err.message : String(err)}`,
       'GIT_ERROR'
     );
