@@ -67,7 +67,7 @@ export interface LoopJob {
 }
 
 export interface LoopJobInternal extends LoopJob {
-  timerId: ReturnType<typeof setInterval>;
+  timerId: ReturnType<typeof setInterval> | null;
   isExecuting: boolean;
   abortController: AbortController;
 }
@@ -91,7 +91,7 @@ export interface ParsedInterval {
 export class LoopError extends Error {
   constructor(
     message: string,
-    public readonly code: 'INVALID_INTERVAL' | 'JOB_NOT_FOUND' | 'JOB_EXECUTION_FAILED' | 'MAX_JOBS_EXCEEDED'
+    public readonly code: 'INVALID_INTERVAL' | 'JOB_NOT_FOUND' | 'JOB_EXECUTION_FAILED' | 'MAX_JOBS_EXCEEDED' | 'JOB_TIMEOUT'
   ) {
     super(message);
     this.name = 'LoopError';
@@ -175,11 +175,11 @@ export class JobScheduler {
   private jobs = new Map<string, LoopJobInternal>();
   private jobIdCounter = 0;
   private onExecutePrompt: (prompt: string, signal: AbortSignal) => Promise<void>;
-  private onError?: (jobId: string, error: Error) => void;
+  private onError?: (jobId: string, error: Error) => void | Promise<void>;
 
   constructor(
     onExecutePrompt: (prompt: string, signal: AbortSignal) => Promise<void>,
-    onError?: (jobId: string, error: Error) => void
+    onError?: (jobId: string, error: Error) => void | Promise<void>
   ) {
     this.onExecutePrompt = onExecutePrompt;
     this.onError = onError;
@@ -238,7 +238,7 @@ export class JobScheduler {
       runCount: 0,
       errorCount: 0,
       nextRunAt: new Date(now.getTime() + milliseconds),
-      timerId: null as unknown as ReturnType<typeof setInterval>, // Will be set below
+      timerId: null,
       isExecuting: false,
       abortController,
     };
@@ -281,8 +281,9 @@ export class JobScheduler {
     const job = this.jobs.get(jobId);
     if (!job) return;
 
+    // Guard: skip if already executing (prevents overlapping runs from setInterval)
+    // Safe in single-threaded JS — no race between check and set within the same microtask
     if (job.isExecuting) {
-      // Skip if still running from previous interval
       console.log(`[session-loop] Skipping job ${jobId}: still executing`);
       return;
     }
@@ -294,8 +295,19 @@ export class JobScheduler {
     job.isExecuting = true;
     const startTime = Date.now();
 
+    // Timeout: 2x interval or 60s minimum, whichever is larger
+    const timeoutMs = Math.max(job.intervalMs * 2, 60_000);
+
     try {
-      await this.onExecutePrompt(job.prompt, job.abortController.signal);
+      await Promise.race([
+        this.onExecutePrompt(job.prompt, job.abortController.signal),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new LoopError(
+            `Job ${jobId} timed out after ${timeoutMs}ms`,
+            'JOB_TIMEOUT'
+          )), timeoutMs)
+        ),
+      ]);
 
       job.runCount++;
       job.lastRunAt = new Date();
@@ -309,7 +321,7 @@ export class JobScheduler {
 
       if (this.onError) {
         try {
-          this.onError(jobId, err);
+          await Promise.resolve(this.onError(jobId, err));
         } catch (cbError) {
           console.error('[session-loop] Error in error callback:', cbError);
         }
@@ -334,7 +346,7 @@ export class JobScheduler {
     job.abortController.abort();
 
     // Clear the interval
-    clearInterval(job.timerId);
+    if (job.timerId !== null) clearInterval(job.timerId);
 
     // Remove from map
     this.jobs.delete(jobId);
@@ -468,18 +480,17 @@ export function registerLoopCommands(pi: ExtensionAPI, scheduler: JobScheduler) 
           return;
         }
 
-        const selected = await ctx.ui.select(
-          'Select a job to stop:',
-          jobs.map(j => ({
-            label: `${j.id} (${j.intervalMs}ms): ${j.prompt.substring(0, 40)}...`,
-            value: j.id,
-          }))
-        );
+        // ctx.ui.select() accepts string[] — format: "jobId | interval | prompt"
+        const options = jobs.map(j => `${j.id} | every ${j.intervalMs}ms | ${j.prompt.substring(0, 40)}`);
+        const selected = await ctx.ui.select('Select a job to stop:', options);
 
         if (!selected) return;
 
+        // Extract job ID from the formatted string (first segment before " | ")
+        const selectedJobId = selected.split(' | ')[0];
+
         try {
-          const stopped = scheduler.stop(selected);
+          const stopped = scheduler.stop(selectedJobId);
           ctx.ui.notify(`✓ Stopped job ${stopped.id}`, 'success');
         } catch (error) {
           ctx.ui.notify(`Error: ${error instanceof Error ? error.message : error}`, 'error');
@@ -597,12 +608,12 @@ export default function sessionLoopExtension(pi: ExtensionAPI) {
   const scheduler = new JobScheduler(
     // Execute prompt callback
     async (prompt, signal) => {
-      // Send the prompt to the session
-      // Note: This is the integration point with pi's session system
-      await pi.session.prompt(prompt);
+      // Send the prompt to the session (fire-and-forget)
+      // pi.sendUserMessage() is the correct API — pi.session.prompt() does NOT exist
+      pi.sendUserMessage(prompt);
     },
-    // Error callback
-    (jobId, error) => {
+    // Error callback (supports async)
+    async (jobId, error) => {
       console.error(`[session-loop] Job ${jobId} error:`, error.message);
     }
   );
@@ -619,9 +630,9 @@ export default function sessionLoopExtension(pi: ExtensionAPI) {
       console.log(`[session-loop] Aborted and cleaned up ${stopped.length} job(s): ${stopped.map(j => j.id).join(', ')}`);
     }
     
-    // Give a small grace period for executing jobs to notice the abort signal
-    // but don't block shutdown indefinitely
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Grace period for executing jobs to notice the abort signal
+    // 500ms is realistic for async operations to check signal.aborted
+    await new Promise(resolve => setTimeout(resolve, 500));
     console.log('[session-loop] Cleanup complete');
   });
 
@@ -784,6 +795,10 @@ Check each success criterion:
 - [ ] Error handlers don't throw unhandled exceptions
 - [ ] AbortController properly passed to async operations
 - [ ] Map iteration is safe (no modification during iteration)
+- [ ] Job execution timeout prevents hung jobs (Promise.race)
+- [ ] Async error callbacks properly awaited (Promise.resolve wrapping)
+- [ ] ctx.ui.select() uses string[] format (not object array)
+- [ ] pi.sendUserMessage() used (not pi.session.prompt())
 
 - [ ] **Step 3: Document installation**
 
