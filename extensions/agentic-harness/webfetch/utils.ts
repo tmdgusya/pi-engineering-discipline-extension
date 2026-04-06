@@ -1,12 +1,22 @@
-
 import type { CacheEntry, ExtractionMethod, WebFetchDetails } from "./types.js";
 import { WebFetchCache } from "./cache.js";
-import { extractMainContent, isArticleContent } from "./extractContent.js";
 import { getTurndownService } from "./turndown.js";
+
 const MAX_CONTENT_SIZE = 10 * 1024 * 1024; // 10MB
 const FETCH_TIMEOUT_MS = 30_000; // 30 seconds
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (compatible; WebFetchTool/1.0)";
+
+const CSR_NOISE = /^(Loading\.\.\.|\s*\.{3,}\s*$|Please enable JS|Enable JavaScript|You need to enable JavaScript|This page requires JavaScript)/i;
+
+function stripNoise(md: string): string {
+  return md
+    .split("\n")
+    .filter(line => !CSR_NOISE.test(line.trim()))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 const cache = new WebFetchCache();
 
@@ -160,36 +170,7 @@ export async function fetchUrlToMarkdown(
 
   const html = new TextDecoder("utf-8").decode(htmlBuffer);
   const turndown = await getTurndownService();
-  let markdown: string;
-  let method: ExtractionMethod;
-
-  if (options.raw) {
-    markdown = turndown.turndown(html);
-    method = "full";
-  } else if (isArticleContent(html)) {
-    const article = await extractMainContent(html, url);
-
-    if (article) {
-      const metadata = [
-        article.title && `# ${article.title}`,
-        article.byline && `> By ${article.byline}`,
-        article.excerpt && `> ${article.excerpt}`,
-        (article.title || article.byline || article.excerpt) && "---",
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-
-      const body = turndown.turndown(article.content);
-      markdown = metadata ? `${metadata}\n\n${body}` : body;
-      method = "readability";
-    } else {
-      markdown = turndown.turndown(html);
-      method = "full";
-    }
-  } else {
-    markdown = turndown.turndown(html);
-    method = "full";
-  }
+  const markdown = stripNoise(turndown.turndown(html));
 
   const entry: CacheEntry = {
     content: markdown,
@@ -197,7 +178,7 @@ export async function fetchUrlToMarkdown(
     code: response.status,
     codeText: response.statusText,
     contentType,
-    extractionMethod: method,
+    extractionMethod: "full",
     url,
     cachedAt: Date.now(),
   };
@@ -207,7 +188,7 @@ export async function fetchUrlToMarkdown(
     content: truncateContent(markdown, options.maxLength),
     details: {
       url,
-      method,
+      method: "full",
       bytes: entry.bytes,
       contentType,
       cached: false,

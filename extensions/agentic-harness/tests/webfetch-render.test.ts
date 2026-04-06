@@ -48,7 +48,7 @@ describe("renderWebfetchCall", () => {
 describe("renderWebfetchResult", () => {
   const details: WebFetchDetails = {
     url: "https://example.com/article",
-    method: "readability",
+    method: "full",
     bytes: 4096,
     contentType: "text/html",
     cached: false,

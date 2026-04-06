@@ -18,8 +18,6 @@ function methodLabel(
   fg: (color: any, text: string) => string,
 ): string {
   switch (method) {
-    case "readability":
-      return fg("success", "readability");
     case "full":
       return fg("warning", "full-html");
     case "raw":

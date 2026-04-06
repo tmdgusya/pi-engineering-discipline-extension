@@ -1,14 +1,21 @@
 # WebFetch Tool Comparison: Ours vs Claude Code
 
 **Date:** 2026-04-06
-**Script:** `extensions/agentic-harness/scripts/compare-webfetch.ts`
+**Updated:** 2026-04-06 — Readability 레이어 제거, Turndown-only로 단순화 (Claude Code 방식과 동일)
 
 ## Methodology
 
-- **Our tool**: HTML → Mozilla Readability article extraction → Turndown + GFM
-- **Claude Code**: Full HTML → Turndown (no Readability, no GFM plugin)
+- **Our tool (current)**: Full HTML → Turndown + GFM → CSR 노이즈 제거 (`stripNoise`)
+- **Our tool (previous)**: HTML → Mozilla Readability → Turndown + GFM (Readability 제거됨)
+- **Claude Code**: Full HTML → Turndown (no GFM plugin)
 - Token estimate: chars ÷ 4 (rough GPT-style approximation)
-- Run command: `cd extensions/agentic-harness && npx tsx scripts/compare-webfetch.ts`
+
+## Architecture Change (2026-04-06)
+
+Readability + jsdom 의존성을 제거하고 Claude Code와 동일한 Turndown-only 파이프라인으로 전환:
+- **제거됨**: `extractContent.ts`, `jsdom`, `@mozilla/readability`
+- **유지됨**: CSR 노이즈 제거 (`stripNoise`), Turndown + GFM 플러그인, 캐시
+- **이점**: 의존성 2개 제거, ~4MB(jsdom) 번들 사이즈 절감, 파이프라인 단순화
 
 ## Results
 

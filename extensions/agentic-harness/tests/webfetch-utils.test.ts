@@ -46,35 +46,24 @@ describe("fetchUrlToMarkdown", () => {
     expect(result.details.contentType).toBe("text/html");
   });
 
-  it("should use Readability for article content", async () => {
+  it("should convert article HTML via Turndown (no Readability)", async () => {
     const bodyText = "A".repeat(600);
     const html = `<html><body><article><h1>Title</h1><p>${bodyText}</p></article></body></html>`;
     mockFetch.mockResolvedValue(mockHtmlResponse(html));
 
     const result = await fetchUrlToMarkdown("https://example.com/article");
-    expect(result.details.method).toBe("readability");
+    expect(result.details.method).toBe("full");
     expect(result.content).toContain("Title");
   });
 
-  it("should fall back to full conversion when Readability fails", async () => {
-    // No article/main tags, low text density
-    const html = "<html><body><div><h1>Nav</h1></div></body></html>";
+  it("should strip CSR noise like Loading...", async () => {
+    const html = `<html><body><h1>Title</h1><p>Loading...</p><p>Real content here</p><p>Loading...</p></body></html>`;
     mockFetch.mockResolvedValue(mockHtmlResponse(html));
 
-    const result = await fetchUrlToMarkdown("https://example.com");
-    expect(result.details.method).toBe("full");
-    expect(result.content).toContain("Nav");
-  });
-
-  it("should skip Readability when raw is true", async () => {
-    const bodyText = "A".repeat(600);
-    const html = `<html><body><article><h1>Title</h1><p>${bodyText}</p></article></body></html>`;
-    mockFetch.mockResolvedValue(mockHtmlResponse(html));
-
-    const result = await fetchUrlToMarkdown("https://example.com/article", {
-      raw: true,
-    });
-    expect(result.details.method).toBe("full");
+    const result = await fetchUrlToMarkdown("https://example.com/spa");
+    expect(result.content).not.toContain("Loading...");
+    expect(result.content).toContain("Real content");
+    expect(result.content).toContain("Title");
   });
 
   it("should return cached result on second request for the same mode", async () => {
@@ -93,8 +82,7 @@ describe("fetchUrlToMarkdown", () => {
   });
 
   it("should keep raw/full-page mode cache entries separate", async () => {
-    const bodyText = "A".repeat(600);
-    const html = `<html><body><article><h1>Title</h1><p>${bodyText}</p></article></body></html>`;
+    const html = `<html><body><article><h1>Title</h1><p>Content</p></article></body></html>`;
     mockFetch.mockResolvedValue(mockHtmlResponse(html));
 
     const autoResult = await fetchUrlToMarkdown("https://example.com/mode-test");
@@ -102,7 +90,7 @@ describe("fetchUrlToMarkdown", () => {
       raw: true,
     });
 
-    expect(autoResult.details.method).toBe("readability");
+    expect(autoResult.details.method).toBe("full");
     expect(rawResult.details.method).toBe("full");
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });

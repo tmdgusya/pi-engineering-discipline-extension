@@ -1,16 +1,4 @@
-export type ExtractionMethod = "readability" | "full" | "raw";
-
-export interface ExtractedArticle {
-  title: string;
-  content: string;
-  textContent: string;
-  length: number;
-  excerpt: string;
-  byline: string | null;
-  dir: string;
-  siteName: string | null;
-  lang: string | null;
-}
+export type ExtractionMethod = "full" | "raw";
 
 export interface CacheEntry {
   content: string;
