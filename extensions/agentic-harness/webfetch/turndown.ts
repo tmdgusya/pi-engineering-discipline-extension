@@ -1,21 +1,7 @@
-/**
- * Lazy-initialized Turndown service with GFM plugin support.
- * Dynamic imports defer loading ~1.4MB+ of libraries until first use.
- */
-
 import type TurndownService from "turndown";
 
 let turndownPromise: Promise<TurndownService> | undefined;
 
-/**
- * Get the shared Turndown service instance.
- * Configured with:
- * - ATX headings (# style)
- * - Fenced code blocks (```)
- * - Dash bullet lists (-)
- * - GFM plugin (tables, strikethrough, task lists)
- * - Removes script, style, nav, header, footer, aside tags
- */
 export async function getTurndownService(): Promise<TurndownService> {
   return (turndownPromise ??= (async () => {
     const [turndownMod, gfmMod] = await Promise.all([
@@ -39,10 +25,7 @@ export async function getTurndownService(): Promise<TurndownService> {
       linkReferenceStyle: "full",
     });
 
-    // Apply GFM plugin for tables, strikethrough, task lists
     service.use(gfm);
-
-    // Strip noise elements
     service.remove(["script", "style", "nav", "header", "footer", "aside"]);
 
     return service;

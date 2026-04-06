@@ -1,14 +1,5 @@
-/**
- * Mozilla Readability-based content extraction.
- * Dynamically imports JSDOM and Readability to keep initial bundle small.
- */
-
 import type { ExtractedArticle } from "./types.js";
 
-/**
- * Extract main article content from HTML using Mozilla Readability.
- * Returns null if extraction fails or content is below 500 characters.
- */
 export async function extractMainContent(
   html: string,
   url: string,
@@ -34,7 +25,7 @@ export async function extractMainContent(
     });
 
     const article = reader.parse();
-    dom.window.close(); // Free JSDOM memory
+    dom.window.close();
 
     if (!article || article.length < 500) {
       return null;
