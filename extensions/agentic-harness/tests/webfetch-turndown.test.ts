@@ -54,19 +54,14 @@ describe("getTurndownService", () => {
     expect(md).toContain("Value");
   });
 
-  it("should remove script, style, nav, header, footer, aside tags", async () => {
+  it("should remove script and style tags", async () => {
     const service = await getTurndownService();
     const html =
-      "<p>Content</p><script>alert('xss')</script><style>.x{}</style>" +
-      "<nav>Menu</nav><header>Top</header><footer>Bottom</footer><aside>Sidebar</aside>";
+      "<p>Content</p><script>alert('xss')</script><style>.x{}</style>";
     const md = service.turndown(html);
     expect(md).toContain("Content");
     expect(md).not.toContain("alert");
     expect(md).not.toContain(".x{}");
-    expect(md).not.toContain("Menu");
-    expect(md).not.toContain("Top");
-    expect(md).not.toContain("Bottom");
-    expect(md).not.toContain("Sidebar");
   });
 
   it("should return the same instance on subsequent calls (singleton)", async () => {

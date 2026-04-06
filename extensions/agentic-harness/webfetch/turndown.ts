@@ -26,7 +26,7 @@ export async function getTurndownService(): Promise<TurndownService> {
     });
 
     service.use(gfm);
-    service.remove(["script", "style", "nav", "header", "footer", "aside"]);
+    service.remove(["script", "style"]);
 
     return service;
   })());
