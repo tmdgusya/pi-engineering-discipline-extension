@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.1](https://github.com/tmdgusya/roach-pi/compare/v1.2.0...v1.2.1) (2026-04-06)
+
+### Bug Fixes
+
+* stop removing nav/header/footer/aside from turndown output ([bf8e3b2](https://github.com/tmdgusya/roach-pi/commit/bf8e3b2b7735920fe18f4992449b31d84710452f))
+
+### Documentation
+
+* update webfetch sample to reflect Turndown-only output ([dd434c2](https://github.com/tmdgusya/roach-pi/commit/dd434c23726435fca7a3fa1e3cd5111256e1bf86))
+* **webfetch:** add context comparison report and benchmark script ([77981a4](https://github.com/tmdgusya/roach-pi/commit/77981a4ffbba266a7556205c8c86eab3e6b460dc))
+* **webfetch:** add raw output samples for docs.anthropic.com comparison ([7900451](https://github.com/tmdgusya/roach-pi/commit/7900451f9776bf3861201fc79d8a5b78bb175c7b))
+
+### Miscellaneous
+
+* bump version to 1.2.1 ([3436d55](https://github.com/tmdgusya/roach-pi/commit/3436d55cdb96f3ccffdb51eba1b7d55882f5e41b))
+* remove webfetch comparison docs and samples ([82766f1](https://github.com/tmdgusya/roach-pi/commit/82766f1cf9c19eacaef9f0e9930aeb9ae3ab0cc1))
+
+### Refactor
+
+* simplify webfetch to Turndown-only pipeline (Claude Code style) ([02045c7](https://github.com/tmdgusya/roach-pi/commit/02045c79c745b6a2d264a94dc929ca45ba22695c))
+
 ## [1.2.0](https://github.com/tmdgusya/roach-pi/compare/v1.1.0...v1.2.0) (2026-04-06)
 
 ### Features
