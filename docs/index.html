@@ -36,7 +36,6 @@
   <nav>
     <div class="container">
       <ul>
-        <li><a href="#install">★ <span data-lang="en">Install</span><span data-lang="ko">설치</span></a></li>
         <li><a href="#why">● <span data-lang="en">Why ROACH PI?</span><span data-lang="ko">왜 ROACH PI?</span></a></li>
         <li><a href="#quickstart">▶ <span data-lang="en">Quick Start</span><span data-lang="ko">빠른 시작</span></a></li>
         <li><a href="#features">■ <span data-lang="en">Features</span><span data-lang="ko">기능</span></a></li>
@@ -73,61 +72,7 @@
 
   <div class="container">
 
-    <!-- Installation -->
-    <section class="section" id="install">
-      <h2>
-        <span class="icon">★</span>
-        <span data-lang="en">Installation</span>
-        <span data-lang="ko">설치</span>
-      </h2>
 
-      <div data-lang="en">
-        <p>Install the extension with a single command:</p>
-      </div>
-      <div data-lang="ko">
-        <p>단일 명령어로 익스텐션을 설치합니다:</p>
-      </div>
-
-      <pre><code>pi install git:github.com/tmdgusya/pi-engineering-discipline-extension</code></pre>
-
-      <div class="card" style="margin-top: 1.5rem;">
-        <h3 style="margin-bottom: 0.75rem;">
-          <span class="icon">●</span>
-          <span data-lang="en">Prerequisite</span>
-          <span data-lang="ko">사전 요구사항</span>
-        </h3>
-        <p data-lang="en">
-          This extension relies on the core engineering discipline skills. Before using this extension, install the skills:
-        </p>
-        <p data-lang="ko">
-          이 익스텐션은 핵심 엔지니어링 디사이플린 스킬에 의존합니다. 사용 전에 스킬을 설치하세요:
-        </p>
-        <a class="btn btn-blue" href="https://github.com/tmdgusya/engineering-discipline" target="_blank" style="display: inline-block; margin-top: 0.5rem;">
-          → <span data-lang="en">Engineering Discipline Skills</span><span data-lang="ko">엔지니어링 디사이플린 스킬</span>
-        </a>
-      </div>
-
-      <div class="card card-blue" style="margin-top: 1.5rem;">
-        <h3 style="margin-bottom: 0.75rem;">
-          <span class="icon">★</span>
-          <span data-lang="en">Setup (Required)</span>
-          <span data-lang="ko">설치 (필수)</span>
-        </h3>
-        <p data-lang="en">
-          After installing, <strong>run <code>/setup</code> first</strong>. This is not optional.
-        </p>
-        <p data-lang="ko">
-          설치 후 <strong>반드시 <code>/setup</code>을 먼저 실행하세요</strong>. 선택 사항이 아닙니다.
-        </p>
-        <pre style="margin-top: 0.75rem;"><code>/setup</code></pre>
-        <p data-lang="en" style="margin-top: 0.75rem; margin-bottom: 0;">
-          Configures <code>quietStartup: true</code> so the extension's custom ROACH PI banner replaces the default startup listing.
-        </p>
-        <p data-lang="ko" style="margin-top: 0.75rem; margin-bottom: 0;">
-          익스텐션의 커스텀 ROACH PI 배너가 기본 시작 목록을 대체하도록 <code>quietStartup: true</code>를 설정합니다.
-        </p>
-      </div>
-    </section>
 
     <!-- Why ROACH PI -->
     <section class="section" id="why">
@@ -431,10 +376,10 @@
           </summary>
           <div class="faq-body">
             <p data-lang="en">
-              Yes. The extension depends on the <a href="https://github.com/tmdgusya/engineering-discipline" target="_blank">engineering-discipline</a> skills repository. Install it first, then install this extension. The extension registers the skill paths automatically via <code>resources_discover</code>.
+              No. All engineering discipline skills are bundled with this extension. Just install the extension and run <code>/setup</code> — everything is ready out of the box.
             </p>
             <p data-lang="ko">
-              네. 익스텐션은 <a href="https://github.com/tmdgusya/engineering-discipline" target="_blank">engineering-discipline</a> 스킬 저장소에 의존합니다. 먼저 설치한 후 이 익스텐션을 설치하세요. 익스텐션이 <code>resources_discover</code>를 통해 스킬 경로를 자동으로 등록합니다.
+              아니요. 모든 엔지니어링 디사이플린 스킬이 이 익스텐션에 번들로 포함되어 있습니다. 익스텐션을 설치하고 <code>/setup</code>을 실행하세요 — 모든 것이 즉시 사용 가능합니다.
             </p>
           </div>
         </details>
@@ -508,8 +453,6 @@
       </p>
       <p style="margin-top: 0.5rem;">
         <a href="https://github.com/tmdgusya/pi-engineering-discipline-extension" target="_blank">→ GitHub</a>
-        &nbsp;&nbsp;
-        <a href="https://github.com/tmdgusya/engineering-discipline" target="_blank">→ Skills Repo</a>
       </p>
     </div>
   </footer>
