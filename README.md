@@ -37,6 +37,10 @@ pi install git:github.com/tmdgusya/pi-engineering-discipline-extension
 - **`/ultraplan`**: The agent dispatches all 5 reviewer perspectives (Feasibility, Architecture, Risk, Dependency, User Value) in parallel via the subagent tool, then synthesizes findings into a milestone DAG.
 - **`/ask`**: Manual test command for the `ask_user_question` tool.
 - **`/reset-phase`**: Resets the workflow phase to idle.
+- **`/loop <interval> <prompt>`**: Schedule a recurring prompt at fixed intervals (`5s`, `10m`, `2h`, `1d`). Cron-style — fires on schedule regardless of execution state.
+- **`/loop-stop [job-id]`**: Stop a specific loop job. Interactive selector if no ID given.
+- **`/loop-list`**: List all active loop jobs with run counts, error counts, and timing.
+- **`/loop-stop-all`**: Stop all active loop jobs (with confirmation).
 
 ### Tools
 - **`ask_user_question`**: The agent calls this autonomously whenever it encounters ambiguity — generating questions and choices dynamically based on context.
@@ -44,6 +48,30 @@ pi install git:github.com/tmdgusya/pi-engineering-discipline-extension
   - **Single**: One-off investigation or exploration tasks
   - **Parallel**: Dispatch multiple independent agents concurrently (max 8 tasks, 4 concurrent)
   - **Chain**: Sequential pipeline where each step uses `{previous}` to reference prior output
+
+### Session Loop
+
+A session-scoped job scheduler for recurring tasks. Up to 100 concurrent jobs with per-job error isolation, `AbortController`-based cooperative cancellation, and automatic cleanup on session shutdown.
+
+```bash
+# Check git status every 5 minutes
+/loop 5m check git status and report changes
+
+# Monitor dev server every 30 seconds
+/loop 30s verify the dev server is running on port 3000
+
+# View active jobs
+/loop-list
+
+# Stop all jobs
+/loop-stop-all
+```
+
+Key properties:
+- **Session-scoped**: Jobs are automatically cleaned up when the session ends. No persistence.
+- **Error-isolated**: One failing job does not affect others.
+- **Timeout-protected**: Jobs timeout at `max(interval × 2, 60s)` to prevent hangs.
+- **Queue-safe**: Uses `deliverAs: 'followUp'` so loop prompts queue correctly even during active agent turns.
 
 ### Event Handlers
 - **`resources_discover`**: Registers `~/engineering-discipline/skills/` so the agent has access to agentic-clarification, agentic-plan-crafting, and agentic-milestone-planning skill rules.
@@ -104,7 +132,7 @@ cd extensions/agentic-harness
 npm test
 ```
 
-32 tests covering tool registration, command delegation, event handlers, ask_user_question behavior, agent discovery, subagent execution helpers, and concurrency control.
+67 tests covering tool registration, command delegation, event handlers, ask_user_question behavior, agent discovery, subagent execution helpers, and concurrency control.
 
 ## Open Source
 

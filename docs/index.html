@@ -226,6 +226,22 @@
 
       </ol>
 
+        <li>
+          <h3>
+            <code>/loop</code>
+            <span data-lang="en"> — Session Loop Scheduler</span>
+            <span data-lang="ko"> — 세션 루프 스케줄러</span>
+          </h3>
+          <p data-lang="en">
+            Schedule recurring prompts at fixed intervals. Cron-style timing — fires on schedule regardless of execution state. Supports <code>5s</code>, <code>10m</code>, <code>2h</code>, <code>1d</code> formats. Up to 100 concurrent jobs with per-job error isolation and automatic cleanup on session shutdown.
+          </p>
+          <p data-lang="ko">
+            고정 간격으로 반복 프롬프트를 스케줄링합니다. Cron 스타일 타이밍 — 실행 상태와 관계없이 스케줄대로 실행됩니다. <code>5s</code>, <code>10m</code>, <code>2h</code>, <code>1d</code> 형식을 지원합니다. 최대 100개 동시 작업, 작업별 에러 격리, 세션 종료 시 자동 정리.
+          </p>
+        </li>
+
+      </ol>
+
       <div class="card card-blue" style="margin-top: 2rem;">
         <p data-lang="en" style="margin-bottom: 0;">
           <strong>💡 Tip:</strong> The <code>ask_user_question</code> tool is always available — the agent will ask clarifying questions autonomously whenever it detects ambiguity, even outside <code>/clarify</code> mode.
@@ -322,6 +338,22 @@
             </p>
             <p data-lang="ko">
               마이크로컴팩션이 오래된 도구 결과를 자릅니다. 단계 인식 요약이 컴팩션 전반에 걸쳐 워크플로 상태를 보존합니다. 단계 및 목표 문서가 컨텍스트 한계를 초과합니다.
+            </p>
+          </div>
+        </div>
+
+        <div class="card">
+          <span class="feature-icon">▶</span>
+          <div class="feature-title">
+            <span data-lang="en">Session Loop Scheduler</span>
+            <span data-lang="ko">세션 루프 스케줄러</span>
+          </div>
+          <div class="feature-desc">
+            <p data-lang="en">
+              Schedule recurring prompts with <code>/loop 5m check status</code>. Cron-style fixed intervals, per-job error isolation, <code>AbortController</code> cancellation, timeout protection, and automatic cleanup on session shutdown. Up to 100 concurrent jobs.
+            </p>
+            <p data-lang="ko">
+              <code>/loop 5m check status</code>로 반복 프롬프트를 스케줄링합니다. Cron 스타일 고정 간격, 작업별 에러 격리, <code>AbortController</code> 취소, 타임아웃 보호, 세션 종료 시 자동 정리. 최대 100개 동시 작업.
             </p>
           </div>
         </div>
