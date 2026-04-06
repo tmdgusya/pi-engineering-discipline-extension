@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0](https://github.com/tmdgusya/roach-pi/compare/v1.0.1...v1.1.0) (2026-04-06)
+
+### Features
+
+* **session-loop:** extension entry point and root registration ([164ab48](https://github.com/tmdgusya/roach-pi/commit/164ab48c9c0af80bdbcdd0b3dbca6f92ba0dcd10))
+* **session-loop:** implement /loop, /loop-stop, /loop-list, /loop-stop-all commands ([b43cd5b](https://github.com/tmdgusya/roach-pi/commit/b43cd5b03042fdae531993fe614e0ad8eb3a0b93))
+* **session-loop:** implement JobScheduler with timeout and error isolation ([f860285](https://github.com/tmdgusya/roach-pi/commit/f860285b728f0983e18c64446310657ab5eaf0bc))
+* **session-loop:** project setup and type definitions ([ab35267](https://github.com/tmdgusya/roach-pi/commit/ab35267dda1b4a1072a354e86094c9af34c5b8f7))
+
+### Bug Fixes
+
+* **session-loop:** clear timeout timer on Promise.race settle to prevent unhandledRejection ([1bcd2a4](https://github.com/tmdgusya/roach-pi/commit/1bcd2a4bc8864e59c1c665e10aa4dfd82720f596))
+* **session-loop:** fix vitest Mock type in test file for tsc --noEmit ([f6f8a0a](https://github.com/tmdgusya/roach-pi/commit/f6f8a0af7f2324a15b8f049b74c26861c6964df4))
+* **session-loop:** use deliverAs followUp to queue messages during active turns ([08acab1](https://github.com/tmdgusya/roach-pi/commit/08acab16e91e71369dad173a27e520a579e0605b))
+
+### Documentation
+
+* add session-loop to README.md and docs/index.html ([a823153](https://github.com/tmdgusya/roach-pi/commit/a823153cdb90866e8f2e1932620e0b417fa46682))
+* **session-loop:** add README with usage and architecture ([0678e9c](https://github.com/tmdgusya/roach-pi/commit/0678e9c67560f49d9ffbe23b7df254599bee6abb))
+
+### Tests
+
+* **session-loop:** unit tests for parseInterval and JobScheduler ([38f39ea](https://github.com/tmdgusya/roach-pi/commit/38f39eaf821d62c8ebc73bd718f54ac1996b9996))
+
 ## [1.0.1](https://github.com/tmdgusya/roach-pi/compare/v1.0.0...v1.0.1) (2026-04-06)
 
 ### Bug Fixes
