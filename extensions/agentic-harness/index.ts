@@ -766,7 +766,7 @@ export default function (pi: ExtensionAPI) {
         "Use /reset-phase if you want to switch from one workflow to another.",
       ];
       const randomTip = tips[Math.floor(Math.random() * tips.length)];
-      const tipLine = theme.fg("cyan", `Tip: ${randomTip}`);
+      const tipLine = theme.fg("blue", `Tip: ${randomTip}`);
       const clarifyLine = theme.fg("dim", "However, in most cases, it's best to start with /clarify.");
 
       const hints = [
