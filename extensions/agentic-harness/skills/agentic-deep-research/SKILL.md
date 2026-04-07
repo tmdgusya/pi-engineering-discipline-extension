@@ -44,6 +44,14 @@ Deep Research uses multiple parallel browser agents to explore different sources
 - Each subagent uses its own named browser session for isolation
 - Optional: User can provide authenticated sessions for restricted sites
 
+## Technical Reference
+
+For complete CLI documentation and parameters, see **INTEGRATION.md**:
+- Session management commands
+- Semantic locators
+- Auth session setup
+- Advanced browser settings
+
 ## Key Concepts
 
 ### Main Agent (Orchestrator)

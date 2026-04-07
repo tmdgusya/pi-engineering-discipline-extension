@@ -141,6 +141,92 @@ agentic-deep-research/
     └── cleanup.sh
 ```
 
+## CLI Reference
+
+Complete CLI documentation: https://github.com/vercel-labs/agent-browser
+
+### Core Commands for Deep Research
+
+```bash
+# Navigation
+agent-browser open <url>                    # Navigate to URL
+agent-browser snapshot                       # Get accessibility tree with refs
+agent-browser close                          # Close browser
+agent-browser close --all                    # Close all sessions
+
+# Session Management
+agent-browser --session <name> open <url>    # Open in named session
+agent-browser --state <file.json> open <url> # Open with auth state
+
+# Interaction
+agent-browser click <selector>               # Click element
+agent-browser fill <selector> <text>        # Fill input
+agent-browser screenshot [path]              # Take screenshot
+agent-browser scroll <direction> [px]       # Scroll (up/down/left/right)
+
+# Info Gathering
+agent-browser get text <selector>           # Get text content
+agent-browser get title                     # Get page title
+agent-browser get url                      # Get current URL
+```
+
+### Semantic Locators
+
+```bash
+# Find by role, text, label
+agent-browser find role button click --name "Submit"
+agent-browser find text "Sign In" click
+agent-browser find label "Email" fill "test@test.com"
+
+# Find by position
+agent-browser find first ".item" click
+agent-browser find nth 2 "a" text
+```
+
+### Session & Auth
+
+```bash
+# Create auth session (after login)
+agent-browser state save ~/.agent-browser/sessions/twitter.json
+
+# Use auth session
+agent-browser --session twitter --state ~/.agent-browser/sessions/twitter.json open https://twitter.com
+
+# List sessions
+agent-browser sessions list
+
+# Delete session
+agent-browser sessions delete <name>
+```
+
+### Wait & Retry
+
+```bash
+agent-browser wait <selector>           # Wait for element
+agent-browser wait <ms>                 # Wait for time (ms)
+agent-browser wait --url "**/dash"    # Wait for URL pattern
+```
+
+### Advanced
+
+```bash
+# Set viewport
+agent-browser set viewport 1920 1080
+
+# Emulate device
+agent-browser set device "iPhone 14"
+
+# Clipboard
+agent-browser clipboard read
+agent-browser clipboard write "text"
+
+# PDF export
+agent-browser pdf output.pdf
+
+# JavaScript execution
+agent-browser eval "document.title"
+```
+
 ## Cleanup
 
 After research completes, temp files are stored at:
