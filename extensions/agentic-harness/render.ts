@@ -1,4 +1,3 @@
-// render.ts
 import * as os from "os";
 import { getMarkdownTheme, type Theme } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
@@ -242,10 +241,6 @@ function renderSingleResult(
   if (usageStr) text += `\n${theme.fg("dim", usageStr)}`;
   return new Text(text, 0, 0);
 }
-
-// ---------------------------------------------------------------------------
-// Parallel-mode result
-// ---------------------------------------------------------------------------
 
 function renderParallelResult(
   details: SubagentDetails,

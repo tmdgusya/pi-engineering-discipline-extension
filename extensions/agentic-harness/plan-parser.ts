@@ -1,30 +1,17 @@
-// plan-parser.ts
-
 export interface PlanTask {
-  /** Task number extracted from "### Task N:" header */
   id: number;
-  /** Task name (text after "Task N:") */
   name: string;
-  /** Raw dependencies line */
   dependencies: string;
-  /** All file paths (Create, Modify, Test) */
   files: string[];
-  /** Commands extracted from "Run: `...`" lines */
   testCommands: string[];
-  /** Criteria extracted from "Expected: ..." lines, paired with their Run commands */
   acceptanceCriteria: string[];
-  /** Whether this is the final verification task */
   isFinal: boolean;
-  /** Full text of all steps (for reference, not sent to validator) */
   fullStepsText: string;
 }
 
 export interface ParsedPlan {
-  /** Plan goal from "**Goal:**" line */
   goal: string;
-  /** Verification command from Verification Strategy */
   verificationCommand: string;
-  /** All parsed tasks */
   tasks: PlanTask[];
 }
 

@@ -168,4 +168,4 @@ When the brainstorming session is complete:
 
 ---
 
-*This skill facilitates idea exploration through active listening and gentle questioning. The goal is clarity, not speed.*
+

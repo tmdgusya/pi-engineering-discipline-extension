@@ -1,5 +1,3 @@
-// types.ts
-
 /** Aggregated token usage from a subagent run. */
 export interface UsageStats {
   input: number;
@@ -37,12 +35,10 @@ export type DisplayItem =
   | { type: "text"; text: string }
   | { type: "toolCall"; name: string; args: Record<string, unknown> };
 
-/** Create an empty UsageStats object. */
 export function emptyUsage(): UsageStats {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 };
 }
 
-/** Sum usage across multiple results. */
 export function aggregateUsage(results: SingleResult[]): UsageStats {
   const total = emptyUsage();
   for (const r of results) {
@@ -56,19 +52,16 @@ export function aggregateUsage(results: SingleResult[]): UsageStats {
   return total;
 }
 
-/** Whether a result represents a successful completion. */
 export function isResultSuccess(r: SingleResult): boolean {
   if (r.exitCode === -1) return false;
   return r.exitCode === 0 && r.stopReason !== "error" && r.stopReason !== "aborted";
 }
 
-/** Whether a result represents an error. */
 export function isResultError(r: SingleResult): boolean {
   if (r.exitCode === -1) return false;
   return !isResultSuccess(r);
 }
 
-/** Extract the last assistant text from a message history. */
 export function getFinalOutput(messages: any[]): string {
   if (!Array.isArray(messages)) return "";
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -83,7 +76,6 @@ export function getFinalOutput(messages: any[]): string {
   return "";
 }
 
-/** Extract all display-worthy items from a message history. */
 export function getDisplayItems(messages: any[]): DisplayItem[] {
   const items: DisplayItem[] = [];
   for (const msg of messages) {
@@ -100,7 +92,6 @@ export function getDisplayItems(messages: any[]): DisplayItem[] {
   return items;
 }
 
-/** Get a human-readable summary text from a result. */
 export function getResultSummaryText(r: SingleResult): string {
   const finalText = getFinalOutput(r.messages);
   if (finalText) return finalText;

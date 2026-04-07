@@ -1,4 +1,3 @@
-// runner-events.ts
 import type { SingleResult } from "./types.js";
 
 const seenSignaturesKey = Symbol("seenMessageSignatures");
@@ -21,10 +20,6 @@ function stableStringify(value: unknown): string {
 export function getMessageSignature(message: unknown): string {
   return stableStringify(message);
 }
-
-// ---------------------------------------------------------------------------
-// Event processing
-// ---------------------------------------------------------------------------
 
 function updateMetadata(result: SingleResult, message: any): void {
   if (!message || message.role !== "assistant") return;

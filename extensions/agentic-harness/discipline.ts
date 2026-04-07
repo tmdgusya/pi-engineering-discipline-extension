@@ -1,4 +1,3 @@
-// discipline.ts
 import type { AgentConfig } from "./agents.js";
 
 const DISCIPLINE_AGENTS = new Set(["plan-worker", "worker"]);

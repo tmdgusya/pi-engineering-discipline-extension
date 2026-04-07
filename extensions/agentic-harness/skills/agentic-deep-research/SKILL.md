@@ -94,11 +94,16 @@ agent-browser --session subagent-2 open {url}
 ```
 
 ### Linux / Container Environments
-On Linux, VMs, or containers, you may need `--args "--no-sandbox"`:
+On Linux, VMs, or containers, you need additional Chrome flags:
 ```bash
-# Linux/VM/Container
-agent-browser --session subagent-1 --args "--no-sandbox" open {url}
+# Linux/VM/Container (required flags)
+agent-browser --session subagent-1 --args "--no-sandbox --disable-dev-shm-usage --disable-gpu" open {url}
 ```
+
+**Required flags:**
+- `--no-sandbox` - Bypass sandbox (root/containers)
+- `--disable-dev-shm-usage` - Fix /dev/shm size issues in containers
+- `--disable-gpu` - Disable GPU acceleration (headless environments)
 
 ### Session Lifecycle
 1. **Create:** Named session for each subagent
@@ -308,10 +313,10 @@ OUTPUT_FILE="$RESEARCH_DIR/subagent-1_findings.md"
 URLS=$(jq -r '.assigned_urls[].url' "$TASK_FILE")
 
 # Create session and explore
-# Note: Add --args "--no-sandbox" on Linux/VM/container
+# Note: Add --args "--no-sandbox --disable-dev-shm-usage --disable-gpu" on Linux/VM/container
 for url in $URLS; do
     agent-browser --session "$SESSION_NAME" open "$url"
-    # Linux: agent-browser --session "$SESSION_NAME" --args "--no-sandbox" open "$url"
+    # Linux: agent-browser --session "$SESSION_NAME" --args "--no-sandbox --disable-dev-shm-usage --disable-gpu" open "$url"
     agent-browser wait --load networkidle
     
     # Extract content

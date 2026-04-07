@@ -1,4 +1,3 @@
-// runner-cli.ts
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -133,10 +132,8 @@ export function parseInheritedCliArgs(argv: string[]): InheritedCliArgs {
   return { extensionArgs, alwaysProxy, fallbackModel, fallbackThinking, fallbackTools, fallbackNoTools };
 }
 
-/** Cached result of parsing the current process's argv. */
 let cachedArgs: InheritedCliArgs | null = null;
 
-/** Get the inherited CLI args (cached). */
 export function getInheritedCliArgs(): InheritedCliArgs {
   if (!cachedArgs) cachedArgs = parseInheritedCliArgs(process.argv);
   return cachedArgs;

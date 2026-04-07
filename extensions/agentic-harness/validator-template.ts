@@ -1,4 +1,3 @@
-// validator-template.ts
 import type { PlanTask } from "./plan-parser.js";
 
 export function buildValidatorPrompt(

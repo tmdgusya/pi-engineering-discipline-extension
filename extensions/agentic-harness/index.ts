@@ -497,7 +497,7 @@ export default function (pi: ExtensionAPI) {
       "- Execute research using parallel subagents (researcher agent).",
       "- Aggregate findings and present a comprehensive report.",
       "- Use webfetch for simple content extraction, agent-browser for interactive/auth-required pages.",
-      "- On Linux/VM, add --args \"--no-sandbox\" to agent-browser commands.",
+      "- On Linux/VM, add --args \"--no-sandbox --disable-dev-shm-usage --disable-gpu\" to agent-browser commands.",
     ].join("\n"),
   };
 

@@ -1,4 +1,3 @@
-// subagent.ts
 import { spawn } from "child_process";
 import { writeFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
@@ -39,7 +38,7 @@ export function resolveDepthConfig(): DepthConfig {
   const stackRaw = process.env[SUBAGENT_STACK_ENV];
   let ancestorStack: string[] = [];
   if (stackRaw) {
-    try { ancestorStack = JSON.parse(stackRaw); } catch { /* ignore */ }
+    try { ancestorStack = JSON.parse(stackRaw); } catch { /* noop */ }
   }
   const cycleRaw = process.env[SUBAGENT_PREVENT_CYCLES_ENV];
   const preventCycles = cycleRaw ? cycleRaw !== "0" : true;
@@ -78,7 +77,7 @@ export function extractFinalOutput(stdout: string): string {
     try {
       const event = JSON.parse(line);
       if (event.type === "message_end" && event.message) messages.push(event.message);
-    } catch { /* skip */ }
+    } catch { /* noop */ }
   }
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
