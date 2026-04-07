@@ -158,6 +158,21 @@ agent_count=5
 depth=10
 ```
 
+## When to Use Browser vs WebFetch
+
+This skill uses **agent-browser** for full browser automation (login, scroll, interact). However, for simple content extraction, **webfetch** is faster and simpler:
+
+| Use Case | Tool | Why |
+|----------|------|-----|
+| Read article content | `webfetch` | Fast, no browser overhead |
+| Extract search results | `agent-browser` or `webfetch` | Either works |
+| Login-required content | `agent-browser` | Needs session/auth |
+| Interactive pages (SPA) | `agent-browser` | Needs JS execution |
+| Screenshots | `agent-browser` | Requires visual rendering |
+| Form submission | `agent-browser` | Needs interaction |
+
+**Tip:** Use `webfetch` when you just need text content from a URL. Reserve `agent-browser` for cases requiring interaction or authentication.
+
 ## Main Workflow
 
 ### Phase 1: Initial Search with Autonomous Engine Selection
