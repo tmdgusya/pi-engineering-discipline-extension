@@ -72,6 +72,25 @@ agent-browser --session subagent-2 open {url}
 Sessions follow pattern: `research-{run_id}-{subagent-id}`
 - Example: `research-20260407-abc123-subagent-1`
 
+## Agent Selection
+
+### Use `researcher` Agent
+**IMPORTANT:** When spawning subagents for deep research, use the `researcher` agent instead of `worker`.
+
+| Agent | Use Case | Slop Cleaner |
+|-------|----------|-------------|
+| `researcher` | Deep research, browser automation, data collection | ❌ Disabled |
+| `worker` | General purpose execution, code changes | ✅ Enabled |
+
+**Why `researcher`?**
+- The `worker` agent triggers `slop-cleaner` after execution, which is unnecessary for research tasks
+- `researcher` agent is optimized for browser-based research without code cleanup overhead
+
+**Example subagent call:**
+```bash
+subagent(agent: "researcher", task: "Research task description", cwd: "...")
+```
+
 ## Trigger Phrases
 
 Use this skill when user says:
