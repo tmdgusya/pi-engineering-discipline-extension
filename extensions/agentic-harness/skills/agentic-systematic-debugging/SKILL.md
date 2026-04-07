@@ -17,6 +17,11 @@ Three core purposes:
 
 These rules have no exceptions.
 
+0. **Attempt reproduction FIRST, before any analysis.**
+   - If you do not know how to reproduce the bug, **stop and ask the user**.
+   - Use available tools (e.g., `ask_user_question`) to ask: "How can I reproduce this bug? What steps, inputs, or conditions trigger it?"
+   - Do not proceed to analysis until you have either reproduced the failure or asked the user for reproduction guidance.
+
 1. **Do not fix until you have a reproducible or observable state.**
 2. **Do not fix until you have stated a root-cause hypothesis.**
 3. **Do not fix until you have a failing test or equivalent reproduction mechanism.**
@@ -59,6 +64,30 @@ If any of these seven items are missing, the work is not done.
 ## Workflow
 
 Follow the steps below in order.
+
+### Phase 0. Attempt Reproduction (MANDATORY First Step)
+
+**Before anything else, try to reproduce the bug.**
+
+1. Run the failing test or command if one exists
+2. If no test exists, write a minimal script to trigger the bug
+3. Check recent code changes, file states, and environment
+
+**If you cannot figure out how to reproduce:**
+
+→ Stop immediately. Do not proceed to analysis.
+→ Use `ask_user_question` to ask the user:
+   - "How can I reproduce this issue? What are the exact steps?"
+   - "What input or environment triggers this bug?"
+   - "Does this happen consistently or intermittently?"
+
+**If reproduction environment is too complex to set up:**
+
+→ Ask the user: "The reproduction environment seems complex. Would you like me to create a plan for setting up the test environment?"
+→ If the user agrees, use the `agentic-plan-crafting` skill to plan the environment setup.
+→ If the user declines, document the required environment and proceed with caution (gathering evidence via logs, code analysis, etc.).
+
+---
 
 ### Phase 1. Define The Problem
 
@@ -252,6 +281,7 @@ If any of the following thoughts arise, stop immediately and return to an earlie
 
 Use this checklist for self-verification during execution.
 
+- [ ] Attempted reproduction FIRST (or asked user for reproduction method)
 - [ ] Defined the problem in one sentence
 - [ ] Reproduced or made the failure observable
 - [ ] Collected evidence
