@@ -1,11 +1,34 @@
 ---
 name: agentic-deep-research
 description: Distributed web research system using multiple browser agents. Use when user says "deep research", "웹 리서치", "여러 소스 탐색", "종합적 검색", or requests comprehensive research on a topic using parallel agent exploration.
+
+IMPORTANT: Before using this skill, check if agent-browser is installed. If not, tell the user to run /init or /setup first. See Prerequisites section for details.
 ---
 
 # Deep Research Skill
 
 A distributed web research system that uses multiple parallel browser agents to explore different sources simultaneously, then aggregates findings into a comprehensive report.
+
+## ⚠️ Prerequisites
+
+**This skill requires `agent-browser` to be installed.**
+
+If agent-browser is not installed, the research will fail. Run one of these commands first:
+
+```bash
+/init
+# or
+/setup
+```
+
+These commands will install agent-browser automatically. Or install manually:
+
+```bash
+npm i -g agent-browser
+agent-browser install
+```
+
+For more information, visit: https://github.com/vercel-labs/agent-browser
 
 ## Overview
 
@@ -720,7 +743,7 @@ Main Agent Flow:
 - **URL depth limited:** Cannot explore infinite link chains
 - **Content extraction:** Complex pages (SPAs, paywalls) may have limited extraction
 - **Rate limiting:** Some sites may block automated access
-- **Browser dependencies:** Requires Chrome/Chromium installed
+- **Browser dependencies:** Requires Chrome/Chromium and agent-browser installed
 - **Session management:** User must manage auth session lifecycle
 
 ## Future Work
