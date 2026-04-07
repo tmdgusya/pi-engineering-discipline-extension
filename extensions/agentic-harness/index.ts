@@ -25,7 +25,8 @@ type WorkflowPhase =
   | "idle"
   | "clarifying"
   | "planning"
-  | "ultraplanning";
+  | "ultraplanning"
+  | "researching";
 
 let currentPhase: WorkflowPhase = "idle";
 let activeGoalDocument: string | null = null;
@@ -487,6 +488,17 @@ export default function (pi: ExtensionAPI) {
       "- Synthesize all reviewer findings into a milestone DAG.",
       "- Use ask_user_question if you need user input on trade-offs.",
     ].join("\n"),
+    researching: [
+      "\n\n## Active Workflow: Deep Research",
+      "You are in deep-research mode. Follow the agentic-deep-research skill rules strictly:",
+      "- First clarify the research topic with the user using ask_user_question tool.",
+      "- Ask about: scope, depth, sources, timeframe, specific focus areas.",
+      "- Create a research plan based on user answers.",
+      "- Execute research using parallel subagents (researcher agent).",
+      "- Aggregate findings and present a comprehensive report.",
+      "- Use webfetch for simple content extraction, agent-browser for interactive/auth-required pages.",
+      "- On Linux/VM, add --args \"--no-sandbox\" to agent-browser commands.",
+    ].join("\n"),
   };
 
   pi.on("before_agent_start", async (event, _ctx) => {
@@ -730,6 +742,39 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  pi.registerCommand("research", {
+    description: "Start deep research with clarification → plan → execute workflow",
+    handler: async (args, ctx) => {
+      const topic = args?.trim() || "";
+      const confirmed = await ctx.ui.confirm(
+        "Start Deep Research",
+        [
+          "This will start an interactive research workflow:",
+          "",
+          "1. Clarify: Ask questions about scope, depth, sources",
+          "2. Plan: Create a research plan",
+          "3. Execute: Run parallel research agents",
+          "4. Report: Aggregate and present findings",
+          "",
+          "This may take several minutes depending on topic complexity.",
+          "",
+          "Proceed?",
+        ].join("\n")
+      );
+      if (!confirmed) return;
+
+      currentPhase = "researching";
+      updateState(STATE_FILE, { phase: "researching", activeGoalDocument: null }).catch(() => {});
+      ctx.ui.setStatus("harness", "Deep research in progress...");
+
+      const prompt = topic
+        ? `Start deep research on: "${topic}"\n\nFollow the agentic-deep-research skill rules. First, use the ask_user_question tool to clarify the research topic: scope, depth, preferred sources, timeframe, and specific focus areas. After clarification, create a research plan and execute it using parallel researcher subagents.`
+        : `Start a deep research session.\n\nFollow the agentic-deep-research skill rules. First, use the ask_user_question tool to understand what the user wants to research: ask about the topic, scope, depth, preferred sources, timeframe, and specific focus areas. After clarification, create a research plan and execute it using parallel researcher subagents.`;
+
+      pi.sendUserMessage(prompt);
+    },
+  });
+
   const setupHandler = async (_args: string, ctx: any) => {
     // Check for agent-browser installation
     let agentBrowserInstalled = false;
@@ -829,7 +874,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerCommand("reset-phase", {
-    description: "Reset the workflow phase to idle (clears clarify/plan/ultraplan mode)",
+    description: "Reset the workflow phase to idle (clears clarify/plan/ultraplan/research mode)",
     handler: async (_args, ctx) => {
       currentPhase = "idle";
       activeGoalDocument = null;
@@ -882,6 +927,7 @@ export default function (pi: ExtensionAPI) {
       const tips = [
         "Use /plan to generate a structured implementation plan after clarifying.",
         "Use /ultraplan for complex tasks that need multi-agent review.",
+        "Use /research for comprehensive web research on a topic.",
         "Use /reset-phase if you want to switch from one workflow to another.",
       ];
       const randomTip = tips[Math.floor(Math.random() * tips.length)];
@@ -909,7 +955,7 @@ export default function (pi: ExtensionAPI) {
     });
 
     ctx.ui.notify(
-      "Agentic Harness loaded: /clarify, /plan, /ultraplan, /reset-phase",
+      "Agentic Harness loaded: /clarify, /plan, /ultraplan, /research, /reset-phase",
       "info"
     );
   });
