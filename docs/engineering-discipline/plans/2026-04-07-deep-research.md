@@ -275,7 +275,7 @@ agent-browser close --tab
 ```
 
 **Temp file naming:** `{session_name}_findings_{timestamp}.md`
-**Location:** `/tmp/deep-research-{run_id}/`
+**Location:** `./deep-research-{run_id}/` (in user's cwd)
 ```
 
 - [ ] **Step 7: Write Auth Session Handling section**
@@ -376,7 +376,7 @@ URL_TIMEOUT=30000  # 30 seconds
 ```bash
 # Cleanup function
 cleanup() {
-    rm -rf /tmp/deep-research-{run_id}
+    rm -rf ./deep-research-{run_id}
     agent-browser --session {name} close 2>/dev/null || true
 }
 
@@ -991,7 +991,7 @@ if [ -z "$RUN_ID" ]; then
     exit 1
 fi
 
-RESEARCH_DIR="/tmp/deep-research-${RUN_ID}"
+RESEARCH_DIR="$(pwd)/deep-research-${RUN_ID}" or use cwd from subagent
 
 # Close all browser sessions for this run
 for session in $(ls "${RESEARCH_DIR}/sessions/" 2>/dev/null || true); do

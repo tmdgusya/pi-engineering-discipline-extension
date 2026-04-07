@@ -42,7 +42,7 @@ Each subagent operates independently with its own browser session:
 
 ### Handoff System
 File-based communication between agents:
-- **Location:** `/tmp/deep-research-{run_id}/`
+- **Location:** `./deep-research-{run_id}/` (in user's cwd)
 - **Subagent output:** `{subagent_id}_findings_{timestamp}.md`
 - **Aggregation metadata:** `research_metadata.md`
 
@@ -210,11 +210,13 @@ urls_per_agent = ceil(total_urls / agent_count)
 Create research tasks for each subagent with their assigned URLs:
 
 ```bash
-# Each subagent runs with its own session
-# Main agent creates tasks and hands off via file system
+# Use cwd (current working directory) for handoff files
+# This allows users to access research results easily
+RESEARCH_DIR="$(pwd)/deep-research-{run_id}"
+mkdir -p "$RESEARCH_DIR/tasks"
 
 # Task file format (written by main agent):
-cat > /tmp/deep-research-{run_id}/tasks/subagent-{n}.json << EOF
+cat > "$RESEARCH_DIR/tasks/subagent-{n}.json" << EOF
 {
   "subagent_id": "subagent-{n}",
   "session_name": "research-{run_id}-subagent-{n}",
@@ -237,16 +239,17 @@ Each subagent follows this pattern:
    - Open URL
    - Wait for page load
    - Extract key content
-   - Write findings to temp file
+   - Write findings to output file
    - Close tab (if multiple tabs)
 4. Write completion marker
 5. Exit
 
 ```bash
-# Subagent execution example
-TASK_FILE="/tmp/deep-research-{run_id}/tasks/subagent-1.json"
+# Use cwd for handoff files
+RESEARCH_DIR="$(pwd)/deep-research-{run_id}"
+TASK_FILE="$RESEARCH_DIR/tasks/subagent-1.json"
 SESSION_NAME="research-{run_id}-subagent-1"
-OUTPUT_FILE="/tmp/deep-research-{run_id}/subagent-1_findings.md"
+OUTPUT_FILE="$RESEARCH_DIR/subagent-1_findings.md"
 
 # Read task
 URLS=$(jq -r '.assigned_urls[].url' "$TASK_FILE")
@@ -269,8 +272,8 @@ Main agent reads all temp files, merges by theme/topic, removes duplicates, gene
 
 ```bash
 # Read all subagent findings
-FINDINGS_DIR="/tmp/deep-research-{run_id}"
-REPORT_FILE="/tmp/deep-research-{run_id}/final_report.md"
+RESEARCH_DIR="$(pwd)/deep-research-{run_id}"
+REPORT_FILE="$RESEARCH_DIR/final_report.md"
 
 # Merge and deduplicate
 cat "$FINDINGS_DIR"/subagent-*_findings.md | \
@@ -335,7 +338,7 @@ agent-browser close --tab
 RUN_ID="$1"
 SUBAGENT_ID="$2"
 SESSION_NAME="research-${RUN_ID}-${SUBAGENT_ID}"
-OUTPUT_DIR="/tmp/deep-research-${RUN_ID}"
+OUTPUT_DIR="$(pwd)/deep-research-${RUN_ID}"
 OUTPUT_FILE="${OUTPUT_DIR}/${SUBAGENT_ID}_findings.md"
 
 # Create output file with header
@@ -389,8 +392,8 @@ done
 echo "Completed: $SUBAGENT_ID"
 ```
 
-**Temp file naming:** `{subagent_id}_findings_{timestamp}.md`
-**Location:** `/tmp/deep-research-{run_id}/`
+**Temp file naming:** `{subagent_id}_findings.md`
+**Location:** `./deep-research-{run_id}/` (in user's cwd)
 
 ## Auth Session Handling
 
@@ -481,9 +484,9 @@ URL_TIMEOUT=30000  # 30 seconds
 ### Cleanup on Error
 
 ```bash
-# Cleanup function
+# Cleanup function (runs in user's cwd)
 cleanup() {
-    rm -rf /tmp/deep-research-{run_id}
+    rm -rf ./deep-research-{run_id}
     agent-browser --session {name} close 2>/dev/null || true
 }
 
@@ -578,8 +581,10 @@ Each subagent writes findings to:
 
 ### Directory Structure
 
+All files are created in the user's current working directory:
+
 ```
-/tmp/deep-research-{run_id}/
+./deep-research-{run_id}/
 ├── tasks/
 │   ├── subagent-1.json
 │   ├── subagent-2.json
@@ -590,6 +595,8 @@ Each subagent writes findings to:
 ├── research_metadata.md
 └── final_report.md
 ```
+
+**Note:** Use `$(pwd)` or accept the cwd from the subagent call to locate files.
 
 ## Final Report Format
 

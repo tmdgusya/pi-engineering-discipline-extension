@@ -145,7 +145,7 @@ agentic-deep-research/
 
 After research completes, temp files are stored at:
 ```
-/tmp/deep-research-{run_id}/
+./deep-research-{run_id}/
 ```
 
 To manually clean up:
