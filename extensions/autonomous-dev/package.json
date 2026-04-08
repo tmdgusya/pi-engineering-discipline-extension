@@ -1,0 +1,22 @@
+{
+  "name": "pi-autonomous-dev",
+  "version": "0.0.1",
+  "description": "Autonomous GitHub issue processing engine",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "build": "tsc --noEmit"
+  },
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "latest",
+    "@sinclair/typebox": "^0.32.14"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^1.0.0"
+  }
+}
