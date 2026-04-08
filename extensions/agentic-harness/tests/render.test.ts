@@ -1,7 +1,14 @@
 // tests/render.test.ts
 import { describe, it, expect } from "vitest";
-import { formatTokens, formatUsage, statusIcon, formatToolCall } from "../render.js";
-import { emptyUsage, type SingleResult } from "../types.js";
+import assert from "node:assert";
+import { formatTokens, formatUsage, statusIcon, formatToolCall, renderResult } from "../render.js";
+import { emptyUsage, type SingleResult, type SubagentDetails } from "../types.js";
+import type { Theme } from "@mariozechner/pi-coding-agent";
+
+const theme: Theme = {
+  fg: (_color: string, text: string) => text,
+  bold: (text: string) => text,
+} as unknown as Theme;
 
 describe("formatTokens", () => {
   it("should format small numbers as-is", () => {
@@ -72,5 +79,70 @@ describe("formatToolCall", () => {
   it("should format grep with pattern", () => {
     const result = formatToolCall("grep", { pattern: "TODO", path: "/src" }, identity);
     expect(result).toContain("TODO");
+  });
+});
+
+describe("nested subagent rendering via renderResult", () => {
+  it("should show nested subagent calls with ⏳ when parent is running", () => {
+    const result: SingleResult = {
+      agent: "reviewer-architecture",
+      agentSource: "bundled",
+      task: "review the plan",
+      exitCode: -1,
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "Let me check the implementation." },
+            { type: "toolCall", name: "subagent", arguments: { agent: "worker", task: "Run the test suite" } },
+          ],
+          usage: { input: 100, output: 50, totalTokens: 150 },
+        },
+      ],
+      stderr: "",
+      usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 150, turns: 1 },
+      nestedCalls: [{ agent: "worker", task: "Run the test suite" }],
+    };
+    const details: SubagentDetails = { mode: "single", results: [result] };
+    const rendered = renderResult(
+      { content: [{ type: "text", text: "(running...)" }], details },
+      false,
+      theme,
+    );
+    const text = rendered.render(80).join("\n");
+    assert.ok(text.includes("worker"), `Expected "worker" in rendered output: ${text}`);
+    assert.ok(text.includes("⏳"), `Expected ⏳ icon in rendered output: ${text}`);
+    assert.ok(text.includes("└─"), `Expected tree branch in rendered output: ${text}`);
+  });
+
+  it("should show ✓ for nested calls when parent completed", () => {
+    const result: SingleResult = {
+      agent: "reviewer-architecture",
+      agentSource: "bundled",
+      task: "review the plan",
+      exitCode: 0,
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "Review complete." },
+          ],
+          usage: { input: 100, output: 50, totalTokens: 150 },
+        },
+      ],
+      stderr: "",
+      usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 150, turns: 1 },
+      stopReason: "end_turn",
+      nestedCalls: [{ agent: "worker", task: "Run the test suite" }],
+    };
+    const details: SubagentDetails = { mode: "single", results: [result] };
+    const rendered = renderResult(
+      { content: [{ type: "text", text: "Review complete." }], details },
+      false,
+      theme,
+    );
+    const text = rendered.render(80).join("\n");
+    assert.ok(text.includes("worker"), `Expected "worker" in rendered output: ${text}`);
+    assert.ok(text.includes("✓"), `Expected ✓ icon in rendered output: ${text}`);
   });
 });
