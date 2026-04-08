@@ -43,6 +43,7 @@ export interface ActivityEntry {
 }
 
 export type WorkerActivityCallback = (activity: string) => void;
+export type WorkerAbortSignal = AbortSignal | undefined;
 
 export type WorkerResult =
   | { status: "completed"; prUrl: string; summary: string }
@@ -97,6 +98,7 @@ export interface OrchestratorStatus {
   currentActivity: string;
   currentIssueNumber: number | null;
   currentIssueTitle: string | null;
+  activeWorkerCount: number;
   recentActivities: ActivityEntry[];
 }
 

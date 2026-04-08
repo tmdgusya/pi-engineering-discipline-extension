@@ -124,6 +124,59 @@ describe("orchestrator", () => {
       expect(status.isRunning).toBe(false);
       expect(status.currentActivity).toBe("stopped");
     });
+
+    it("should abort in-flight worker activity and keep stopped state after stop", async () => {
+      let capturedOnActivity: ((activity: string) => void) | undefined;
+      let capturedSignal: AbortSignal | undefined;
+      let resolveWorker: ((value: any) => void) | null = null;
+      let markWorkerStarted: (() => void) | null = null;
+      const workerStarted = new Promise<void>((resolve) => {
+        markWorkerStarted = resolve;
+      });
+
+      workerSpawner.mockImplementationOnce(async (_issueNumber, _config, onActivity, signal) => {
+        capturedOnActivity = onActivity;
+        capturedSignal = signal;
+        markWorkerStarted?.();
+        return await new Promise((resolve) => {
+          resolveWorker = resolve;
+        });
+      });
+
+      mockListIssues.mockResolvedValueOnce([
+        {
+          number: 42,
+          title: "Test",
+          body: "",
+          labels: [AUTONOMOUS_LABELS.READY],
+          author: "alice",
+          createdAt: "2026-04-01T00:00:00Z",
+        },
+      ]);
+
+      const pollPromise = orchestrator.pollCycle();
+      await workerStarted;
+      expect(capturedSignal?.aborted).toBe(false);
+
+      orchestrator.stop();
+      expect(capturedSignal?.aborted).toBe(true);
+
+      capturedOnActivity?.("read src/after-stop.ts");
+      resolveWorker?.({
+        status: "completed",
+        prUrl: "https://github.com/owner/repo/pull/1",
+        summary: "Done",
+      });
+      await pollPromise;
+
+      const status = orchestrator.getStatus();
+      expect(status.isRunning).toBe(false);
+      expect(status.currentActivity).toBe("stopped");
+      expect(status.recentActivities[0].text).toContain("stopped");
+      expect(status.recentActivities.some((activity) => activity.text.includes("after-stop"))).toBe(false);
+      expect(mockSwap).not.toHaveBeenCalled();
+      expect(mockPostComment).not.toHaveBeenCalled();
+    });
   });
 
   describe("pickupReadyIssues", () => {
@@ -143,7 +196,7 @@ describe("orchestrator", () => {
       await orchestrator.pollCycle();
 
       expect(mockLock).toHaveBeenCalledWith("owner/repo", 42);
-      expect(workerSpawner).toHaveBeenCalledWith(42, expect.any(Object), expect.any(Function));
+      expect(workerSpawner).toHaveBeenCalledWith(42, expect.any(Object), expect.any(Function), expect.any(Object));
       expect(mockLogAutonomousDev).toHaveBeenCalledWith(
         "info",
         "issues.ready.found",
@@ -256,7 +309,7 @@ describe("orchestrator", () => {
       const status = orchestrator.getStatus();
       expect(status.currentActivity).toBe("idle - waiting for work");
       expect(status.recentActivities.some((activity) => activity.text.includes("read src/app.ts"))).toBe(true);
-      expect(workerSpawner).toHaveBeenCalledWith(42, expect.any(Object), expect.any(Function));
+      expect(workerSpawner).toHaveBeenCalledWith(42, expect.any(Object), expect.any(Function), expect.any(Object));
     });
 
     it("should handle worker failure", async () => {

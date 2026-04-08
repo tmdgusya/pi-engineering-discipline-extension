@@ -8,7 +8,6 @@ tools:
   - read
   - write
   - bash
-model: claude-sonnet
 ---
 
 # Autonomous Dev Worker

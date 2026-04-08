@@ -3,7 +3,7 @@ import { existsSync, readFileSync, rmSync } from "fs";
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { getAutonomousDevLogPath, logAutonomousDev } from "../logger.js";
+import { flushAutonomousDevLogs, getAutonomousDevLogPath, logAutonomousDev } from "../logger.js";
 
 describe("logger", () => {
   let tempDir: string | null = null;
@@ -16,7 +16,7 @@ describe("logger", () => {
     }
   });
 
-  it("writes structured JSON logs to the configured file", () => {
+  it("writes structured JSON logs to the configured file", async () => {
     tempDir = mkdtempSync(join(tmpdir(), "autonomous-dev-log-"));
     const logPath = join(tempDir, "autonomous-dev.log");
     process.env.PI_AUTONOMOUS_DEV_LOG_PATH = logPath;
@@ -27,6 +27,7 @@ describe("logger", () => {
       message: "Polling GitHub issues",
       details: { trackedIssueCount: 1 },
     });
+    await flushAutonomousDevLogs();
 
     expect(getAutonomousDevLogPath()).toBe(logPath);
     expect(existsSync(logPath)).toBe(true);

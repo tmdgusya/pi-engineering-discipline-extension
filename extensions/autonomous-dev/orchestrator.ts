@@ -4,6 +4,7 @@ import {
   OrchestratorStatus,
   WorkerResult,
   WorkerActivityCallback,
+  WorkerAbortSignal,
   AUTONOMOUS_LABELS,
 } from "./types.js";
 import {
@@ -39,7 +40,8 @@ interface TrackedIssueState {
 async function stubWorkerSpawn(
   _issueNumber: number,
   _config: OrchestratorConfig,
-  _onActivity?: WorkerActivityCallback
+  _onActivity?: WorkerActivityCallback,
+  _signal?: WorkerAbortSignal
 ): Promise<WorkerResult> {
   return {
     status: "completed",
@@ -66,10 +68,12 @@ export class AutonomousDevOrchestrator {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private trackedIssues: Map<number, TrackedIssueState> = new Map();
   private runToken = 0;
+  private activeWorkerControllers: Map<number, AbortController> = new Map();
   private workerSpawner: (
     issueNumber: number,
     config: OrchestratorConfig,
-    onActivity?: WorkerActivityCallback
+    onActivity?: WorkerActivityCallback,
+    signal?: WorkerAbortSignal
   ) => Promise<WorkerResult> = stubWorkerSpawn;
 
   constructor(config: Partial<OrchestratorConfig> = {}) {
@@ -93,6 +97,7 @@ export class AutonomousDevOrchestrator {
       currentActivity: "idle - waiting for work",
       currentIssueNumber: null,
       currentIssueTitle: null,
+      activeWorkerCount: 0,
       recentActivities: [],
     };
     this.updateActivity("idle - waiting for work");
@@ -156,6 +161,11 @@ export class AutonomousDevOrchestrator {
     }
     this.runToken++;
     this.status.isRunning = false;
+    for (const controller of this.activeWorkerControllers.values()) {
+      controller.abort();
+    }
+    this.activeWorkerControllers.clear();
+    this.status.activeWorkerCount = 0;
     this.logEvent("engine.stop", {
       message: "Stopping autonomous-dev polling loop",
       details: { trackedIssueCount: this.trackedIssues.size },
@@ -187,7 +197,8 @@ export class AutonomousDevOrchestrator {
     spawner: (
       issueNumber: number,
       config: OrchestratorConfig,
-      onActivity?: WorkerActivityCallback
+      onActivity?: WorkerActivityCallback,
+      signal?: WorkerAbortSignal
     ) => Promise<WorkerResult>
   ): void {
     this.workerSpawner = spawner;
@@ -310,6 +321,11 @@ export class AutonomousDevOrchestrator {
     const tracked = this.trackedIssues.get(issueNumber);
     if (!tracked) return;
 
+    const runToken = this.runToken;
+    const controller = new AbortController();
+    this.activeWorkerControllers.set(issueNumber, controller);
+    this.status.activeWorkerCount = this.activeWorkerControllers.size;
+
     try {
       const trackedTitle = tracked.title;
       this.logEvent("worker.started", {
@@ -318,14 +334,30 @@ export class AutonomousDevOrchestrator {
         message: "Launching autonomous worker",
       });
       this.updateActivity("processing issue", issueNumber, trackedTitle);
-      const result = await this.workerSpawner(issueNumber, this.config, (activity) => {
-        this.logEvent("worker.activity", {
+      const result = await this.workerSpawner(
+        issueNumber,
+        this.config,
+        (activity) => {
+          if (controller.signal.aborted || runToken !== this.runToken) return;
+          this.logEvent("worker.activity", {
+            issueNumber,
+            issueTitle: trackedTitle,
+            message: activity,
+          });
+          this.updateActivity(activity, issueNumber, trackedTitle);
+        },
+        controller.signal
+      );
+
+      if (controller.signal.aborted || runToken !== this.runToken) {
+        this.logEvent("worker.aborted", {
           issueNumber,
           issueTitle: trackedTitle,
-          message: activity,
+          message: "Discarding worker result after stop or superseding run",
         });
-        this.updateActivity(activity, issueNumber, trackedTitle);
-      });
+        return;
+      }
+
       this.logEvent("worker.result", {
         issueNumber,
         issueTitle: trackedTitle,
@@ -338,6 +370,16 @@ export class AutonomousDevOrchestrator {
       });
       await this.handleWorkerResult(issueNumber, result);
     } catch (err) {
+      if (controller.signal.aborted || runToken !== this.runToken) {
+        this.logEvent("worker.aborted", {
+          issueNumber,
+          issueTitle: tracked.title,
+          message: "Worker aborted after stop or superseding run",
+          details: { error: describeError(err) },
+        });
+        return;
+      }
+
       console.error(
         `[autonomous-dev] Worker failed for #${issueNumber}:`,
         err
@@ -353,6 +395,12 @@ export class AutonomousDevOrchestrator {
       this.status.stats.totalFailed++;
       this.status.stats.totalProcessed++;
       await this.handleFailure(issueNumber);
+    } finally {
+      const active = this.activeWorkerControllers.get(issueNumber);
+      if (active === controller) {
+        this.activeWorkerControllers.delete(issueNumber);
+      }
+      this.status.activeWorkerCount = this.activeWorkerControllers.size;
     }
   }
 

@@ -1,4 +1,5 @@
-import { appendFileSync, existsSync, mkdirSync, renameSync, statSync } from "fs";
+import { appendFile, mkdir, rename, stat } from "fs/promises";
+import { existsSync } from "fs";
 import { dirname } from "path";
 import { homedir } from "os";
 
@@ -18,15 +19,17 @@ export interface AutonomousDevLogEntry {
   details?: Record<string, unknown>;
 }
 
+let writeQueue: Promise<void> = Promise.resolve();
+
 export function getAutonomousDevLogPath(): string {
   return process.env.PI_AUTONOMOUS_DEV_LOG_PATH || DEFAULT_LOG_PATH;
 }
 
-function rotateIfNeeded(path: string): void {
+async function rotateIfNeeded(path: string): Promise<void> {
   if (!existsSync(path)) return;
-  if (statSync(path).size < MAX_LOG_SIZE_BYTES) return;
+  if ((await stat(path)).size < MAX_LOG_SIZE_BYTES) return;
   try {
-    renameSync(path, `${path}.1`);
+    await rename(path, `${path}.1`);
   } catch {
     // Best-effort rotation only.
   }
@@ -56,21 +59,25 @@ function sanitize(value: unknown): unknown {
 
 export function logAutonomousDev(level: AutonomousDevLogLevel, event: string, entry: Omit<AutonomousDevLogEntry, "ts" | "level" | "event"> = {}): void {
   const path = getAutonomousDevLogPath();
+  const line = `${JSON.stringify({
+    ts: new Date().toISOString(),
+    level,
+    event,
+    ...(sanitize(entry) as Record<string, unknown>),
+  })}\n`;
 
-  try {
-    mkdirSync(dirname(path), { recursive: true });
-    rotateIfNeeded(path);
-    appendFileSync(
-      path,
-      `${JSON.stringify({
-        ts: new Date().toISOString(),
-        level,
-        event,
-        ...sanitize(entry),
-      })}\n`,
-      "utf-8"
-    );
-  } catch (error) {
-    console.warn("[autonomous-dev] Failed to write log:", error);
-  }
+  writeQueue = writeQueue
+    .catch(() => undefined)
+    .then(async () => {
+      await mkdir(dirname(path), { recursive: true });
+      await rotateIfNeeded(path);
+      await appendFile(path, line, "utf-8");
+    })
+    .catch((error) => {
+      console.warn("[autonomous-dev] Failed to write log:", error);
+    });
+}
+
+export async function flushAutonomousDevLogs(): Promise<void> {
+  await writeQueue;
 }

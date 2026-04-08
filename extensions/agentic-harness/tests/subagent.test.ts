@@ -103,6 +103,28 @@ describe("getPiInvocation", () => {
     const invocation = getPiInvocation();
     expect(invocation).toEqual({ command: "pi", args: [] });
   });
+
+  it("should fall back to pi when running under vitest", () => {
+    process.argv = [
+      "/usr/bin/node",
+      "/tmp/project/node_modules/vitest/vitest.mjs",
+      "run",
+    ];
+
+    const invocation = getPiInvocation();
+    expect(invocation).toEqual({ command: "pi", args: [] });
+  });
+
+  it("should fall back to pi when running under vite cli", () => {
+    process.argv = [
+      "/usr/bin/node",
+      "/tmp/project/node_modules/vite/bin/vite.js",
+      "dev",
+    ];
+
+    const invocation = getPiInvocation();
+    expect(invocation).toEqual({ command: "pi", args: [] });
+  });
 });
 
 describe("Constants", () => {

@@ -58,13 +58,24 @@ export function getCycleViolations(requested: string[], stack: string[]): string
   return requested.filter((name) => stackSet.has(name));
 }
 
+function isTransientRunnerScript(mainScript: string | undefined): boolean {
+  const normalizedMainScript = mainScript?.replace(/\\/g, "/").toLowerCase() ?? "";
+  const runnerMarkers = [
+    "/vite-node/",
+    "/vitest/",
+    "/vite/",
+    "/tsx/",
+    "/ts-node/",
+    "/node_modules/vitest.mjs",
+    "/node_modules/vite.mjs",
+  ];
+
+  return runnerMarkers.some((marker) => normalizedMainScript.includes(marker));
+}
+
 export function getPiInvocation(): { command: string; args: string[] } {
   const mainScript = process.argv[1];
-  const normalizedMainScript = mainScript?.replace(/\\/g, "/").toLowerCase() ?? "";
-  const isTransientRunner =
-    normalizedMainScript.includes("/vite-node/") ||
-    normalizedMainScript.includes("/tsx/") ||
-    normalizedMainScript.includes("/ts-node/");
+  const isTransientRunner = isTransientRunnerScript(mainScript);
 
   if (!isTransientRunner && mainScript && existsSync(mainScript)) {
     const execName = basename(process.execPath).toLowerCase();

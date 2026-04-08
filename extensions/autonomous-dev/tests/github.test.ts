@@ -11,13 +11,12 @@ import {
 } from "../github.js";
 import { AUTONOMOUS_LABELS } from "../types.js";
 
-// Mock child_process
 vi.mock("child_process", () => ({
-  execSync: vi.fn(),
+  execFile: vi.fn(),
 }));
 
-import { execSync } from "child_process";
-const mockExec = execSync as unknown as ReturnType<typeof vi.fn>;
+import { execFile } from "child_process";
+const mockExecFile = execFile as unknown as ReturnType<typeof vi.fn>;
 
 describe("github", () => {
   beforeEach(() => {
@@ -26,8 +25,8 @@ describe("github", () => {
 
   describe("listIssuesByLabel", () => {
     it("should list issues with the ready label", async () => {
-      mockExec.mockReturnValue(
-        JSON.stringify([
+      mockExecFile.mockImplementation((_cmd, _args, _opts, cb) => {
+        cb?.(null, JSON.stringify([
           {
             number: 42,
             title: "Add login page",
@@ -36,56 +35,50 @@ describe("github", () => {
             author: { login: "alice" },
             createdAt: "2026-04-01T00:00:00Z",
           },
-        ])
-      );
+        ]), "");
+      });
 
       const issues = await listIssuesByLabel("owner/repo", AUTONOMOUS_LABELS.READY);
       expect(issues).toHaveLength(1);
       expect(issues[0].number).toBe(42);
       expect(issues[0].title).toBe("Add login page");
       expect(issues[0].author).toBe("alice");
-      const call = mockExec.mock.calls[0][0] as string;
-      expect(call).toContain("--json number,title,body,labels,author,createdAt");
-      expect(call).not.toMatch(/--json\s*$/);
+      const [, args] = mockExecFile.mock.calls[0];
+      expect(args).toContain("--json");
+      expect(args).toContain("number,title,body,labels,author,createdAt");
     });
 
     it("should exclude issues with specified labels", async () => {
-      mockExec.mockReturnValue(JSON.stringify([]));
-      await listIssuesByLabel("owner/repo", AUTONOMOUS_LABELS.READY, [
-        AUTONOMOUS_LABELS.IN_PROGRESS,
-      ]);
-      expect(mockExec).toHaveBeenCalledTimes(1);
-      const call = mockExec.mock.calls[0][0] as string;
-      expect(call).toContain("-label:autonomous-dev:in-progress");
+      mockExecFile.mockImplementation((_cmd, _args, _opts, cb) => cb?.(null, JSON.stringify([]), ""));
+      await listIssuesByLabel("owner/repo", AUTONOMOUS_LABELS.READY, [AUTONOMOUS_LABELS.IN_PROGRESS]);
+      expect(mockExecFile).toHaveBeenCalledTimes(1);
+      const [, args] = mockExecFile.mock.calls[0];
+      expect(args[3]).toContain("-label:autonomous-dev:in-progress");
     });
   });
 
   describe("getIssueWithComments", () => {
     it("should return issue with comments", async () => {
-      mockExec
-        .mockReturnValueOnce(
-          JSON.stringify({
-            number: 42,
-            title: "Test issue",
-            body: "Body text",
-            labels: [{ name: "autonomous-dev:ready" }],
-            author: { login: "bob" },
-            createdAt: "2026-04-01T00:00:00Z",
-          })
-        )
-        .mockReturnValueOnce(
-          JSON.stringify({
-            comments: [
-              {
-                id: 1,
-                author: { login: "alice" },
-                body: "I think we should use OAuth",
-                createdAt: "2026-04-02T00:00:00Z",
-                isBot: false,
-              },
-            ],
-          })
-        );
+      mockExecFile
+        .mockImplementationOnce((_cmd, _args, _opts, cb) => cb?.(null, JSON.stringify({
+          number: 42,
+          title: "Test issue",
+          body: "Body text",
+          labels: [{ name: "autonomous-dev:ready" }],
+          author: { login: "bob" },
+          createdAt: "2026-04-01T00:00:00Z",
+        }), ""))
+        .mockImplementationOnce((_cmd, _args, _opts, cb) => cb?.(null, JSON.stringify({
+          comments: [
+            {
+              id: 1,
+              author: { login: "alice" },
+              body: "I think we should use OAuth",
+              createdAt: "2026-04-02T00:00:00Z",
+              isBot: false,
+            },
+          ],
+        }), ""));
 
       const ctx = await getIssueWithComments("owner/repo", 42);
       expect(ctx.issue.number).toBe(42);
@@ -96,24 +89,23 @@ describe("github", () => {
 
   describe("swapLabels", () => {
     it("should remove old labels and add new ones", async () => {
-      mockExec.mockReturnValue("");
+      mockExecFile.mockImplementation((_cmd, _args, _opts, cb) => cb?.(null, "", ""));
       await swapLabels("owner/repo", 42, ["old-label"], ["new-label"]);
 
-      // First call: remove, Second call: add
-      expect(mockExec).toHaveBeenCalledTimes(2);
-      expect((mockExec.mock.calls[0][0] as string)).toContain("--remove-label");
-      expect((mockExec.mock.calls[1][0] as string)).toContain("--add-label");
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
+      expect(mockExecFile.mock.calls[0][1]).toContain("--remove-label");
+      expect(mockExecFile.mock.calls[1][1]).toContain("--add-label");
     });
   });
 
   describe("lockIssue", () => {
     it("should swap ready → in-progress", async () => {
-      mockExec.mockReturnValue("");
+      mockExecFile.mockImplementation((_cmd, _args, _opts, cb) => cb?.(null, "", ""));
       await lockIssue("owner/repo", 42);
 
-      expect(mockExec).toHaveBeenCalledTimes(2);
-      const removeCall = mockExec.mock.calls[0][0] as string;
-      const addCall = mockExec.mock.calls[1][0] as string;
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
+      const removeCall = mockExecFile.mock.calls[0][1] as string[];
+      const addCall = mockExecFile.mock.calls[1][1] as string[];
       expect(removeCall).toContain(AUTONOMOUS_LABELS.READY);
       expect(addCall).toContain(AUTONOMOUS_LABELS.IN_PROGRESS);
     });
@@ -121,12 +113,12 @@ describe("github", () => {
 
   describe("markNeedsClarification", () => {
     it("should swap in-progress → needs-clarification", async () => {
-      mockExec.mockReturnValue("");
+      mockExecFile.mockImplementation((_cmd, _args, _opts, cb) => cb?.(null, "", ""));
       await markNeedsClarification("owner/repo", 42);
 
-      expect(mockExec).toHaveBeenCalledTimes(2);
-      const removeCall = mockExec.mock.calls[0][0] as string;
-      const addCall = mockExec.mock.calls[1][0] as string;
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
+      const removeCall = mockExecFile.mock.calls[0][1] as string[];
+      const addCall = mockExecFile.mock.calls[1][1] as string[];
       expect(removeCall).toContain(AUTONOMOUS_LABELS.IN_PROGRESS);
       expect(addCall).toContain(AUTONOMOUS_LABELS.NEEDS_CLARIFICATION);
     });
@@ -134,12 +126,12 @@ describe("github", () => {
 
   describe("resumeFromClarification", () => {
     it("should swap needs-clarification → in-progress", async () => {
-      mockExec.mockReturnValue("");
+      mockExecFile.mockImplementation((_cmd, _args, _opts, cb) => cb?.(null, "", ""));
       await resumeFromClarification("owner/repo", 42);
 
-      expect(mockExec).toHaveBeenCalledTimes(2);
-      const removeCall = mockExec.mock.calls[0][0] as string;
-      const addCall = mockExec.mock.calls[1][0] as string;
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
+      const removeCall = mockExecFile.mock.calls[0][1] as string[];
+      const addCall = mockExecFile.mock.calls[1][1] as string[];
       expect(removeCall).toContain(AUTONOMOUS_LABELS.NEEDS_CLARIFICATION);
       expect(addCall).toContain(AUTONOMOUS_LABELS.IN_PROGRESS);
     });
@@ -171,33 +163,31 @@ describe("github", () => {
 
   describe("detectRepo", () => {
     it("should parse HTTPS remote URL", async () => {
-      mockExec.mockReturnValue("https://github.com/owner/repo.git\n");
+      mockExecFile.mockImplementation((_cmd, _args, _opts, cb) => cb?.(null, "https://github.com/owner/repo.git\n", ""));
       const repo = await detectRepo();
       expect(repo).toBe("owner/repo");
     });
 
     it("should parse SSH remote URL", async () => {
-      mockExec.mockReturnValue("git@github.com:owner/repo.git\n");
+      mockExecFile.mockImplementation((_cmd, _args, _opts, cb) => cb?.(null, "git@github.com:owner/repo.git\n", ""));
       const repo = await detectRepo();
       expect(repo).toBe("owner/repo");
     });
 
     it("should parse GitHub URL without .git suffix", async () => {
-      mockExec.mockReturnValue("https://github.com/owner/repo");
+      mockExecFile.mockImplementation((_cmd, _args, _opts, cb) => cb?.(null, "https://github.com/owner/repo", ""));
       const repo = await detectRepo();
       expect(repo).toBe("owner/repo");
     });
 
     it("should return null on failure", async () => {
-      mockExec.mockImplementation(() => {
-        throw new Error("no remote");
-      });
+      mockExecFile.mockImplementation((_cmd, _args, _opts, cb) => cb?.(new Error("no remote")));
       const repo = await detectRepo();
       expect(repo).toBeNull();
     });
 
     it("should return null for non-GitHub URLs", async () => {
-      mockExec.mockReturnValue("https://gitlab.com/owner/repo.git\n");
+      mockExecFile.mockImplementation((_cmd, _args, _opts, cb) => cb?.(null, "https://gitlab.com/owner/repo.git\n", ""));
       const repo = await detectRepo();
       expect(repo).toBeNull();
     });

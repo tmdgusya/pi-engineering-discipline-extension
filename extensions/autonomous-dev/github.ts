@@ -1,49 +1,65 @@
-import { execSync } from "child_process";
+import { execFile } from "child_process";
 import { GitHubIssue, GitHubComment, IssueContext, AUTONOMOUS_LABELS, GitHubError } from "./types.js";
 
-/** Throws GitHubError on failure. */
-function execGhJson<T>(args: string): T {
+function formatCommand(command: string, args: string[]): string {
+  const escapedArgs = args.map((arg) => (/\s|"/.test(arg) ? JSON.stringify(arg) : arg));
+  return [command, ...escapedArgs].join(" ");
+}
+
+function execCommand(command: string, args: string[], cwd?: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      command,
+      args,
+      {
+        encoding: "utf-8",
+        timeout: 30_000,
+        cwd,
+        maxBuffer: 10 * 1024 * 1024,
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          (error as any).stderr = stderr;
+          reject(error);
+          return;
+        }
+        resolve(stdout);
+      }
+    );
+  });
+}
+
+async function execJson<T>(command: string, args: string[], cwd?: string): Promise<T> {
   try {
-    const result = execSync(`gh ${args}`, {
-      encoding: "utf-8",
-      timeout: 30_000,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    return JSON.parse(result) as T;
+    const stdout = await execCommand(command, args, cwd);
+    return JSON.parse(stdout) as T;
   } catch (err: any) {
     const stderr = err.stderr?.toString() || "";
-    const exitCode = err.status ?? null;
+    const exitCode = err.code ?? err.status ?? null;
     throw new GitHubError(
-      `gh command failed: gh ${args}`,
-      `gh ${args}`,
-      exitCode,
+      `command failed: ${formatCommand(command, args)}`,
+      formatCommand(command, args),
+      typeof exitCode === "number" ? exitCode : null,
       stderr
     );
   }
 }
 
-/** Throws GitHubError on failure. */
-function execGhRaw(args: string): string {
+async function execRaw(command: string, args: string[], cwd?: string): Promise<string> {
   try {
-    return execSync(`gh ${args}`, {
-      encoding: "utf-8",
-      timeout: 30_000,
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
+    const stdout = await execCommand(command, args, cwd);
+    return stdout.trim();
   } catch (err: any) {
     const stderr = err.stderr?.toString() || "";
-    const exitCode = err.status ?? null;
+    const exitCode = err.code ?? err.status ?? null;
     throw new GitHubError(
-      `gh command failed: gh ${args}`,
-      `gh ${args}`,
-      exitCode,
+      `command failed: ${formatCommand(command, args)}`,
+      formatCommand(command, args),
+      typeof exitCode === "number" ? exitCode : null,
       stderr
     );
   }
 }
-
-// --- Issue operations ---
-
 
 export async function listIssuesByLabel(
   repo: string,
@@ -65,9 +81,16 @@ export async function listIssuesByLabel(
     createdAt: string;
   };
 
-  const issues = execGhJson<GhIssue[]>(
-    `issue list --search "${query}" --limit 50 --json number,title,body,labels,author,createdAt`
-  );
+  const issues = await execJson<GhIssue[]>("gh", [
+    "issue",
+    "list",
+    "--search",
+    query,
+    "--limit",
+    "50",
+    "--json",
+    "number,title,body,labels,author,createdAt",
+  ]);
 
   return issues.map((i) => ({
     number: i.number,
@@ -78,7 +101,6 @@ export async function listIssuesByLabel(
     createdAt: i.createdAt,
   }));
 }
-
 
 export async function getIssueWithComments(
   repo: string,
@@ -101,17 +123,30 @@ export async function getIssueWithComments(
     isBot: boolean;
   };
 
-  const issue = execGhJson<GhIssue>(
-    `issue view ${issueNumber} --repo ${repo} --json number,title,body,labels,author,createdAt`
-  );
+  const issue = await execJson<GhIssue>("gh", [
+    "issue",
+    "view",
+    String(issueNumber),
+    "--repo",
+    repo,
+    "--json",
+    "number,title,body,labels,author,createdAt",
+  ]);
 
   let comments: GhComment[] = [];
   try {
-    comments = execGhJson<GhComment[]>(
-      `issue view ${issueNumber} --repo ${repo} --comments --json comments`
-    ).comments || [];
+    const response = await execJson<{ comments?: GhComment[] }>("gh", [
+      "issue",
+      "view",
+      String(issueNumber),
+      "--repo",
+      repo,
+      "--comments",
+      "--json",
+      "comments",
+    ]);
+    comments = response.comments || [];
   } catch {
-    // Issue with no comments may error — that's fine
     comments = [];
   }
 
@@ -134,9 +169,6 @@ export async function getIssueWithComments(
   };
 }
 
-// --- Comment operations ---
-
-
 export async function postComment(
   repo: string,
   issueNumber: number,
@@ -151,20 +183,20 @@ export async function postComment(
   writeFileSync(tmpFile, body, "utf-8");
 
   try {
-    return execGhRaw(
-      `issue comment ${issueNumber} --repo ${repo} --body-file "${tmpFile}"`
-    );
+    return await execRaw("gh", [
+      "issue",
+      "comment",
+      String(issueNumber),
+      "--repo",
+      repo,
+      "--body-file",
+      tmpFile,
+    ]);
   } finally {
     try { unlinkSync(tmpFile); } catch {}
   }
 }
 
-// --- Label operations ---
-
-/**
- * Swap labels on an issue: remove then add.
- * NOT truly atomic, but sequential remove→add is safe because labels are additive.
- */
 export async function swapLabels(
   repo: string,
   issueNumber: number,
@@ -173,18 +205,32 @@ export async function swapLabels(
 ): Promise<void> {
   for (const label of removeLabels) {
     try {
-      execGhRaw(`issue edit ${issueNumber} --repo ${repo} --remove-label "${label}"`);
+      await execRaw("gh", [
+        "issue",
+        "edit",
+        String(issueNumber),
+        "--repo",
+        repo,
+        "--remove-label",
+        label,
+      ]);
     } catch {
       // Label may not exist
     }
   }
-  const labelArgs = addLabels.map((l) => `"${l}"`).join(",");
-  if (labelArgs) {
-    execGhRaw(`issue edit ${issueNumber} --repo ${repo} --add-label ${labelArgs}`);
+  if (addLabels.length > 0) {
+    await execRaw("gh", [
+      "issue",
+      "edit",
+      String(issueNumber),
+      "--repo",
+      repo,
+      "--add-label",
+      addLabels.join(","),
+    ]);
   }
 }
 
-/** ready → in-progress */
 export async function lockIssue(
   repo: string,
   issueNumber: number
@@ -197,7 +243,6 @@ export async function lockIssue(
   );
 }
 
-/** in-progress → needs-clarification */
 export async function markNeedsClarification(
   repo: string,
   issueNumber: number
@@ -210,7 +255,6 @@ export async function markNeedsClarification(
   );
 }
 
-/** needs-clarification → in-progress */
 export async function resumeFromClarification(
   repo: string,
   issueNumber: number
@@ -222,9 +266,6 @@ export async function resumeFromClarification(
     [AUTONOMOUS_LABELS.IN_PROGRESS]
   );
 }
-
-// --- PR operations ---
-
 
 export async function createPullRequest(
   repo: string,
@@ -242,30 +283,34 @@ export async function createPullRequest(
   writeFileSync(tmpFile, body, "utf-8");
 
   try {
-    return execGhRaw(
-      `pr create --repo ${repo} --title "${title.replace(/"/g, '\\"')}" --body-file "${tmpFile}" --head "${headBranch}" --base "${baseBranch}"`
-    );
+    return await execRaw("gh", [
+      "pr",
+      "create",
+      "--repo",
+      repo,
+      "--title",
+      title,
+      "--body-file",
+      tmpFile,
+      "--head",
+      headBranch,
+      "--base",
+      baseBranch,
+    ]);
   } finally {
     try { unlinkSync(tmpFile); } catch {}
   }
 }
 
-
 export async function detectRepo(cwd?: string): Promise<string | null> {
   try {
-    const remoteUrl = execSync("git remote get-url origin", {
-      encoding: "utf-8",
-      cwd,
-      timeout: 5000,
-    }).trim();
-
+    const remoteUrl = await execRaw("git", ["remote", "get-url", "origin"], cwd);
     const match = remoteUrl.match(/(?:github\.com[:/])([^/]+\/[^/\s]+?)(?:\.git)?$/);
     return match ? match[1] : null;
   } catch {
     return null;
   }
 }
-
 
 export function hasNewCommentsAfter(
   comments: GitHubComment[],
