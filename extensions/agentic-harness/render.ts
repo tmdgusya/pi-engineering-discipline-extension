@@ -1,4 +1,3 @@
-// render.ts
 import * as os from "os";
 import { getMarkdownTheme, type Theme } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@mariozechner/pi-tui";
@@ -171,6 +170,18 @@ export function renderResult(
   return renderParallelResult(details, expanded, theme);
 }
 
+function renderNestedCalls(r: SingleResult, fg: ThemeFg): string {
+  if (!r.nestedCalls || r.nestedCalls.length === 0) return "";
+  const isRunning = r.exitCode === -1;
+  const lines: string[] = [];
+  for (const call of r.nestedCalls) {
+    const icon = isRunning ? fg("warning", "⏳") : fg("success", "✓");
+    const taskPreview = truncate(call.task, 50);
+    lines.push(`  ${fg("muted", "└─")} ${icon} ${fg("accent", call.agent)} ${fg("dim", taskPreview)}`);
+  }
+  return lines.join("\n");
+}
+
 function renderSingleResult(
   r: SingleResult,
   expanded: boolean,
@@ -207,6 +218,14 @@ function renderSingleResult(
           container.addChild(new Text(theme.fg("muted", "→ ") + formatToolCall(item.name, item.args, theme.fg.bind(theme)), 0, 0));
         }
       }
+
+      if (r.nestedCalls && r.nestedCalls.length > 0) {
+        container.addChild(new Spacer(1));
+        container.addChild(new Text(theme.fg("muted", "─── Nested Calls ───"), 0, 0));
+        const nestedText = renderNestedCalls(r, theme.fg.bind(theme));
+        container.addChild(new Text(nestedText, 0, 0));
+      }
+
       if (finalOutput) {
         container.addChild(new Spacer(1));
         container.addChild(new Markdown(finalOutput.trim(), 0, 0, mdTheme));
@@ -237,6 +256,9 @@ function renderSingleResult(
       text += `\n${theme.fg("muted", "(Ctrl+O to expand)")}`;
     }
   }
+
+  const nestedText = renderNestedCalls(r, theme.fg.bind(theme));
+  if (nestedText) text += `\n${nestedText}`;
 
   const usageStr = formatUsage(r.usage, r.model);
   if (usageStr) text += `\n${theme.fg("dim", usageStr)}`;

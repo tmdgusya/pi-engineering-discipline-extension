@@ -79,12 +79,51 @@ describe("mapWithConcurrencyLimit", () => {
 });
 
 describe("getPiInvocation", () => {
+  const originalArgv = [...process.argv];
+
+  afterEach(() => {
+    process.argv = [...originalArgv];
+  });
+
   it("should return a valid invocation object", () => {
     const invocation = getPiInvocation();
     expect(invocation).toHaveProperty("command");
     expect(invocation).toHaveProperty("args");
     expect(typeof invocation.command).toBe("string");
     expect(Array.isArray(invocation.args)).toBe(true);
+  });
+
+  it("should fall back to pi when running under vite-node", () => {
+    process.argv = [
+      "/usr/bin/node",
+      "/tmp/project/node_modules/vite-node/dist/cli.mjs",
+      "/tmp/script.ts",
+    ];
+
+    const invocation = getPiInvocation();
+    expect(invocation).toEqual({ command: "pi", args: [] });
+  });
+
+  it("should fall back to pi when running under vitest", () => {
+    process.argv = [
+      "/usr/bin/node",
+      "/tmp/project/node_modules/vitest/vitest.mjs",
+      "run",
+    ];
+
+    const invocation = getPiInvocation();
+    expect(invocation).toEqual({ command: "pi", args: [] });
+  });
+
+  it("should fall back to pi when running under vite cli", () => {
+    process.argv = [
+      "/usr/bin/node",
+      "/tmp/project/node_modules/vite/bin/vite.js",
+      "dev",
+    ];
+
+    const invocation = getPiInvocation();
+    expect(invocation).toEqual({ command: "pi", args: [] });
   });
 });
 

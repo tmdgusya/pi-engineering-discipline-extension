@@ -2,6 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { processPiJsonLine, getMessageSignature } from "../runner-events.js";
 import { emptyUsage, type SingleResult } from "../types.js";
+import assert from "node:assert/strict";
 
 function makeEmptyResult(): SingleResult {
   return {
@@ -131,5 +132,124 @@ describe("getMessageSignature", () => {
     const m1 = { role: "assistant", content: [{ type: "text", text: "a" }] };
     const m2 = { role: "assistant", content: [{ type: "text", text: "b" }] };
     expect(getMessageSignature(m1)).not.toBe(getMessageSignature(m2));
+  });
+});
+
+describe("nested subagent detection", () => {
+  it("should detect a subagent toolCall in message_end", () => {
+    const result: SingleResult = {
+      agent: "reviewer",
+      agentSource: "bundled",
+      task: "review code",
+      exitCode: -1,
+      messages: [],
+      stderr: "",
+      usage: emptyUsage(),
+    };
+    const line = JSON.stringify({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Let me run the tests." },
+          {
+            type: "toolCall",
+            name: "subagent",
+            arguments: { agent: "worker", task: "Run vitest on the project" },
+          },
+        ],
+        usage: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, totalTokens: 150 },
+      },
+    });
+    const changed = processPiJsonLine(line, result);
+    assert.ok(changed);
+    assert.equal(result.nestedCalls?.length, 1);
+    assert.equal(result.nestedCalls![0].agent, "worker");
+    assert.equal(result.nestedCalls![0].task, "Run vitest on the project");
+  });
+
+  it("should detect multiple subagent calls across messages", () => {
+    const result: SingleResult = {
+      agent: "simplify",
+      agentSource: "bundled",
+      task: "simplify code",
+      exitCode: -1,
+      messages: [],
+      stderr: "",
+      usage: emptyUsage(),
+    };
+    const line1 = JSON.stringify({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "toolCall", name: "subagent", arguments: { agent: "explorer", task: "Find patterns" } },
+        ],
+        usage: { input: 50, output: 20, totalTokens: 70 },
+      },
+    });
+    const line2 = JSON.stringify({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Now let me check dependencies." },
+          { type: "toolCall", name: "subagent", arguments: { agent: "worker", task: "Fix imports" } },
+        ],
+        usage: { input: 80, output: 30, totalTokens: 110 },
+      },
+    });
+    processPiJsonLine(line1, result);
+    processPiJsonLine(line2, result);
+    assert.equal(result.nestedCalls?.length, 2);
+    assert.equal(result.nestedCalls![0].agent, "explorer");
+    assert.equal(result.nestedCalls![1].agent, "worker");
+  });
+
+  it("should not detect non-subagent toolCalls", () => {
+    const result: SingleResult = {
+      agent: "worker",
+      agentSource: "bundled",
+      task: "run tests",
+      exitCode: -1,
+      messages: [],
+      stderr: "",
+      usage: emptyUsage(),
+    };
+    const line = JSON.stringify({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "toolCall", name: "bash", arguments: { command: "npm test" } },
+        ],
+        usage: { input: 50, output: 20, totalTokens: 70 },
+      },
+    });
+    processPiJsonLine(line, result);
+    assert.equal(result.nestedCalls?.length ?? 0, 0);
+  });
+
+  it("should not crash on messages without content array", () => {
+    const result: SingleResult = {
+      agent: "worker",
+      agentSource: "bundled",
+      task: "run",
+      exitCode: -1,
+      messages: [],
+      stderr: "",
+      usage: emptyUsage(),
+    };
+    const line = JSON.stringify({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: "plain string content",
+        usage: { input: 10, output: 5, totalTokens: 15 },
+      },
+    });
+    const changed = processPiJsonLine(line, result);
+    assert.ok(changed);
+    assert.equal(result.nestedCalls, undefined);
   });
 });

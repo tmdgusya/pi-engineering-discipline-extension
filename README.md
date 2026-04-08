@@ -73,6 +73,62 @@ Key properties:
 - **Timeout-protected**: Jobs timeout at `max(interval × 2, 60s)` to prevent hangs.
 - **Queue-safe**: Uses `deliverAs: 'followUp'` so loop prompts queue correctly even during active agent turns.
 
+### Autonomous Dev Engine (Experimental)
+
+An autonomous GitHub issue processing engine that polls issues labeled `autonomous-dev:ready`, implements them using the agentic pipeline, and creates pull requests.
+
+> ⚠️ **Experimental** — Requires `PI_AUTONOMOUS_DEV=1` environment variable.
+
+```bash
+export PI_AUTONOMOUS_DEV=1
+```
+
+The engine runs inside the TUI and exposes a compact persistent HUD in the footer and a below-editor widget so you can see:
+- current engine state
+- current activity
+- recent worker activity history
+- active issue context
+- whether a worker/subagent is actively running
+
+Busy worker activity is shown as a green indicator, idle polling/tracking is orange, and stopped is red.
+
+#### Label Protocol
+
+| Label | Meaning |
+|-------|---------|  
+| `autonomous-dev:ready` | Issue queued for processing |
+| `autonomous-dev:in-progress` | Being implemented |
+| `autonomous-dev:needs-clarification` | Awaiting author response |
+| `autonomous-dev:completed` | PR created |
+| `autonomous-dev:failed` | Could not complete |
+
+#### Commands
+
+- **`/autonomous-dev start [repo]`** — Start the engine. Prefer an explicit full GitHub repo slug like `owner/repo` (for example `tmdgusya/roach-pi`). If omitted, the engine tries to detect the current directory's GitHub remote.
+- **`/autonomous-dev stop`** — Stop the engine and abort in-flight autonomous worker execution for the current session.
+- **`/autonomous-dev status`** — Show current status, including recent activity, last poll/error timestamps, active worker count, and log file path.
+- **`/autonomous-dev poll`** — Trigger one poll cycle
+
+Example:
+
+```bash
+/autonomous-dev start tmdgusya/roach-pi
+```
+
+#### Runtime Notes
+
+- The worker reuses the active session's model/provider configuration. If the current session is not authenticated for its selected provider, `/autonomous-dev start` may fail during worker preflight or worker launch.
+- The engine writes structured JSONL logs to `~/.pi/autonomous-dev.log` by default. Override with `PI_AUTONOMOUS_DEV_LOG_PATH` if needed.
+- Poll discovery and GitHub integration are observable through `/autonomous-dev status` and the log file.
+
+#### Tools
+
+- **`gh_issue_list`** — List issues with optional label filter
+- **`gh_issue_read`** — Read an issue with all comments
+- **`gh_issue_comment`** — Post a comment on an issue
+- **`gh_label`** — Add or remove labels
+- **`gh_pr_create`** — Create a pull request
+
 ### Event Handlers
 - **`resources_discover`**: Registers `~/engineering-discipline/skills/` so the agent has access to agentic-clarification, agentic-plan-crafting, and agentic-milestone-planning skill rules.
   - Compatibility mode (default): skills are merged with existing discovered skills.
@@ -128,11 +184,10 @@ Everything the agent does is inspectable. No hidden behavior.
 ## Testing
 
 ```bash
-cd extensions/agentic-harness
 npm test
 ```
 
-67 tests covering tool registration, command delegation, event handlers, ask_user_question behavior, agent discovery, subagent execution helpers, and concurrency control.
+253 tests covering tool registration, command delegation, event handlers, ask_user_question behavior, agent discovery, subagent execution helpers, concurrency control, autonomous-dev GitHub client, and orchestrator.
 
 ## Open Source
 

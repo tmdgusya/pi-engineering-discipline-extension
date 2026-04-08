@@ -1,5 +1,3 @@
-// types.ts
-
 /** Aggregated token usage from a subagent run. */
 export interface UsageStats {
   input: number;
@@ -9,6 +7,11 @@ export interface UsageStats {
   cost: number;
   contextTokens: number;
   turns: number;
+}
+
+export interface NestedSubagentCall {
+  agent: string;
+  task: string;
 }
 
 /** Result of a single subagent invocation. */
@@ -24,6 +27,7 @@ export interface SingleResult {
   stopReason?: string;
   errorMessage?: string;
   sawAgentEnd?: boolean;
+  nestedCalls?: NestedSubagentCall[];
 }
 
 /** Metadata attached to every tool result for rendering. */
