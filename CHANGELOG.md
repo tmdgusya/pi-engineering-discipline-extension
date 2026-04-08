@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.0](https://github.com/tmdgusya/roach-pi/compare/v1.5.0...v1.6.0) (2026-04-08)
+
+### Features
+
+* add NestedSubagentCall type and SingleResult.nestedCalls field ([5033685](https://github.com/tmdgusya/roach-pi/commit/5033685df3dbe1fe31e229db3beeb176c6512f12))
+* detect nested subagent calls from child process messages ([c9cf782](https://github.com/tmdgusya/roach-pi/commit/c9cf7823ed733ad2132801a1e0096e5a2d4591d0))
+* render nested subagent calls as indented tree with status icons ([704d661](https://github.com/tmdgusya/roach-pi/commit/704d661d2632ad50dde7d583898cdde626ab95c8))
+
+### Documentation
+
+* add autonomous dev handoff document ([b130cb3](https://github.com/tmdgusya/roach-pi/commit/b130cb36d6e349998ae50295d5c40ee4c6a331dd))
+
+### Miscellaneous
+
+* slop-cleaner pass on nested subagent visibility code ([435c5f2](https://github.com/tmdgusya/roach-pi/commit/435c5f2e977ec71621969c71186646ec9f54f46e))
+
 ## [1.5.0](https://github.com/tmdgusya/roach-pi/compare/v1.4.0...v1.5.0) (2026-04-08)
 
 ### Features
