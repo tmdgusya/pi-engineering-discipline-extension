@@ -11,6 +11,12 @@ export interface UsageStats {
   turns: number;
 }
 
+/** A nested subagent call detected from a child process's tool usage. */
+export interface NestedSubagentCall {
+  agent: string;
+  task: string;
+}
+
 /** Result of a single subagent invocation. */
 export interface SingleResult {
   agent: string;
@@ -24,6 +30,7 @@ export interface SingleResult {
   stopReason?: string;
   errorMessage?: string;
   sawAgentEnd?: boolean;
+  nestedCalls?: NestedSubagentCall[];
 }
 
 /** Metadata attached to every tool result for rendering. */
