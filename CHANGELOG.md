@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0](https://github.com/tmdgusya/roach-pi/compare/v1.4.0...v1.5.0) (2026-04-08)
+
+### Features
+
+* add dedicated synthesis agent for ultraplan Phase 3 ([88b9c73](https://github.com/tmdgusya/roach-pi/commit/88b9c73df6b767136c8c8a9c0274020fe156fd70))
+
 ## [1.4.0](https://github.com/tmdgusya/roach-pi/compare/v1.3.0...v1.4.0) (2026-04-07)
 
 ### Features
