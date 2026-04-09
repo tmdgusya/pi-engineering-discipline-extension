@@ -1,11 +1,12 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { randomBytes } from "crypto";
 import { AutonomousDevOrchestrator } from "./orchestrator.js";
 import type { WorkerActivityCallback, WorkerResult } from "./types.js";
 import { getIssueWithComments, detectRepo } from "./github.js";
 import { loadAgentsFromDir, type AgentConfig } from "../agentic-harness/agents.js";
-import { runAgent, resolveDepthConfig } from "../agentic-harness/subagent.js";
+import { runAgent, resolveDepthConfig, type RunLifecycleEvent } from "../agentic-harness/subagent.js";
 import { getInheritedCliArgs } from "../agentic-harness/runner-cli.js";
 import { getDisplayItems, getFinalOutput, type SingleResult } from "../agentic-harness/types.js";
 import { getAutonomousDevLogPath, logAutonomousDev } from "./logger.js";
@@ -164,20 +165,25 @@ function cleanupAutonomousDev(): void {
   }
 }
 
+function cleanupAndReraise(signalName: NodeJS.Signals): void {
+  cleanupAutonomousDev();
+  process.kill(process.pid, signalName);
+}
+
 function ensureProcessCleanupHooks(): void {
   if (processCleanupRegistered) return;
   processCleanupRegistered = true;
 
-  const cleanup = () => {
+  process.once("exit", () => {
     cleanupAutonomousDev();
-  };
-
-  process.once("exit", cleanup);
-  process.once("SIGINT", () => {
-    cleanup();
   });
+
+  process.once("SIGINT", () => {
+    cleanupAndReraise("SIGINT");
+  });
+
   process.once("SIGTERM", () => {
-    cleanup();
+    cleanupAndReraise("SIGTERM");
   });
 }
 
@@ -371,7 +377,11 @@ export async function resolveWorkerAgentConfig(agent: AgentConfig): Promise<Agen
   return preferredModel === agent.model ? agent : { ...agent, model: preferredModel };
 }
 
-function createAutonomousWorkerSpawner() {
+function createWorkerRunId(issueNumber: number): string {
+  return `autonomous-${issueNumber}-${Date.now()}-${randomBytes(4).toString("hex")}`;
+}
+
+export function createAutonomousWorkerSpawner() {
   let cachedWorkerAgent: AgentConfig | null = null;
 
   return async (
@@ -421,13 +431,36 @@ function createAutonomousWorkerSpawner() {
       return { status: "failed", error: resolvedWorkerAgent.error };
     }
 
+    const workerRunId = createWorkerRunId(issueNumber);
     const task = buildWorkerTask(issueNumber, config.repo, issueContext);
+    const logWorkerLifecycle = (event: RunLifecycleEvent) => {
+      logAutonomousDev("info", `worker.process.${event.phase}`, {
+        repo: config.repo,
+        issueNumber,
+        issueTitle: issueContext.issue.title,
+        message: `Worker process ${event.phase}`,
+        details: {
+          workerRunId,
+          runId: event.runId,
+          parentRunId: event.parentRunId,
+          rootRunId: event.rootRunId,
+          owner: event.owner,
+          pid: event.pid,
+          pgid: event.pgid,
+          reason: event.reason,
+          signal: event.signal,
+          exitCode: event.exitCode,
+          parentPid: process.pid,
+        },
+      });
+    };
+
     logAutonomousDev("info", "worker.run.started", {
       repo: config.repo,
       issueNumber,
       issueTitle: issueContext.issue.title,
       message: `Running ${resolvedWorkerAgent.name} worker agent`,
-      details: { cwd: process.cwd() },
+      details: { cwd: process.cwd(), workerRunId, parentPid: process.pid },
     });
     onActivity?.(`starting worker for issue #${issueNumber}`);
 
@@ -438,6 +471,14 @@ function createAutonomousWorkerSpawner() {
       task,
       cwd: process.cwd(),
       depthConfig: resolveDepthConfig(),
+      ownership: {
+        runId: workerRunId,
+        owner: `autonomous-dev#${issueNumber}`,
+      },
+      extraEnv: {
+        PI_SUBAGENT_PROCESS_LOG: getAutonomousDevLogPath(),
+      },
+      onLifecycleEvent: logWorkerLifecycle,
       makeDetails: (results) => ({ mode: "single", results }),
       onUpdate: (partial) => {
         const single = partial.details?.results?.[0];

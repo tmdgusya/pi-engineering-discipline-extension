@@ -1,8 +1,8 @@
 // subagent.ts
 import { spawn } from "child_process";
-import { writeFile, unlink } from "fs/promises";
+import { appendFile, mkdir, writeFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
-import { join, basename } from "path";
+import { join, basename, dirname } from "path";
 import { randomBytes } from "crypto";
 import { existsSync } from "fs";
 import type { AgentConfig } from "./agents.js";
@@ -20,6 +20,11 @@ const SUBAGENT_DEPTH_ENV = "PI_SUBAGENT_DEPTH";
 const SUBAGENT_MAX_DEPTH_ENV = "PI_SUBAGENT_MAX_DEPTH";
 const SUBAGENT_STACK_ENV = "PI_SUBAGENT_STACK";
 const SUBAGENT_PREVENT_CYCLES_ENV = "PI_SUBAGENT_PREVENT_CYCLES";
+const SUBAGENT_RUN_ID_ENV = "PI_SUBAGENT_RUN_ID";
+const SUBAGENT_PARENT_RUN_ID_ENV = "PI_SUBAGENT_PARENT_RUN_ID";
+const SUBAGENT_ROOT_RUN_ID_ENV = "PI_SUBAGENT_ROOT_RUN_ID";
+const SUBAGENT_OWNER_ENV = "PI_SUBAGENT_OWNER";
+const SUBAGENT_PROCESS_LOG_ENV = "PI_SUBAGENT_PROCESS_LOG";
 
 export const DEFAULT_MAX_DEPTH = 3;
 
@@ -162,6 +167,26 @@ function buildPiArgs(agent: AgentConfig | undefined, systemPromptPath: string | 
 
 type OnUpdateCallback = (partial: { content: Array<{ type: "text"; text: string }>; details: SubagentDetails | undefined }) => void;
 
+export interface RunOwnership {
+  runId?: string;
+  parentRunId?: string;
+  rootRunId?: string;
+  owner?: string;
+}
+
+export interface RunLifecycleEvent {
+  phase: "spawned" | "terminating" | "closed";
+  runId: string;
+  parentRunId?: string;
+  rootRunId: string;
+  owner?: string;
+  pid: number;
+  pgid?: number;
+  reason?: string;
+  signal?: NodeJS.Signals;
+  exitCode?: number | null;
+}
+
 export interface RunAgentOptions {
   agent: AgentConfig | undefined;
   agentName: string;
@@ -169,12 +194,55 @@ export interface RunAgentOptions {
   cwd: string;
   depthConfig: DepthConfig;
   signal?: AbortSignal;
+  ownership?: RunOwnership;
+  extraEnv?: Record<string, string | undefined>;
   onUpdate?: OnUpdateCallback;
+  onLifecycleEvent?: (event: RunLifecycleEvent) => void;
   makeDetails: (results: SingleResult[]) => SubagentDetails;
 }
 
+function generateRunId(): string {
+  return randomBytes(8).toString("hex");
+}
+
+function resolveRunOwnership(ownership: RunOwnership | undefined, fallbackOwner: string): Required<Pick<RunOwnership, "runId" | "rootRunId">> & RunOwnership {
+  const inheritedRunId = process.env[SUBAGENT_RUN_ID_ENV];
+  const inheritedRootRunId = process.env[SUBAGENT_ROOT_RUN_ID_ENV];
+
+  const runId = ownership?.runId || generateRunId();
+  const parentRunId = ownership?.parentRunId ?? inheritedRunId;
+  const rootRunId = ownership?.rootRunId || inheritedRootRunId || parentRunId || runId;
+  const owner = ownership?.owner || process.env[SUBAGENT_OWNER_ENV] || fallbackOwner;
+
+  return { runId, parentRunId, rootRunId, owner };
+}
+
+async function appendLifecycleLog(path: string | undefined, event: RunLifecycleEvent): Promise<void> {
+  if (!path) return;
+  const line = `${JSON.stringify({
+    ts: new Date().toISOString(),
+    event: "subagent.process",
+    ...event,
+  })}\n`;
+
+  await mkdir(dirname(path), { recursive: true });
+  await appendFile(path, line, "utf-8");
+}
+
 export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
-  const { agent, agentName, task, cwd, depthConfig, signal, onUpdate, makeDetails } = opts;
+  const {
+    agent,
+    agentName,
+    task,
+    cwd,
+    depthConfig,
+    signal,
+    ownership,
+    extraEnv,
+    onUpdate,
+    onLifecycleEvent,
+    makeDetails,
+  } = opts;
 
   if (!agent) {
     return {
@@ -221,22 +289,52 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
 
     const nextDepth = depthConfig.currentDepth + 1;
     const propagatedStack = [...depthConfig.ancestorStack, agentName];
+    const resolvedOwnership = resolveRunOwnership(ownership, agentName);
+    const processLogPath = extraEnv?.[SUBAGENT_PROCESS_LOG_ENV] || process.env[SUBAGENT_PROCESS_LOG_ENV];
 
     let wasAborted = false;
+    let semanticTerminationRequested = false;
+    let closeSignal: NodeJS.Signals | undefined;
+    const lifecycleWrites: Promise<void>[] = [];
 
     const exitCode = await new Promise<number>((resolve) => {
       const proc = spawn(invocation.command, allArgs, {
         cwd,
         shell: false,
+        detached: process.platform !== "win32",
         stdio: ["pipe", "pipe", "pipe"],
         env: {
           ...process.env,
+          ...extraEnv,
           [SUBAGENT_DEPTH_ENV]: String(nextDepth),
           [SUBAGENT_MAX_DEPTH_ENV]: String(depthConfig.maxDepth),
           [SUBAGENT_STACK_ENV]: JSON.stringify(propagatedStack),
           [SUBAGENT_PREVENT_CYCLES_ENV]: depthConfig.preventCycles ? "1" : "0",
+          [SUBAGENT_RUN_ID_ENV]: resolvedOwnership.runId,
+          [SUBAGENT_PARENT_RUN_ID_ENV]: resolvedOwnership.parentRunId,
+          [SUBAGENT_ROOT_RUN_ID_ENV]: resolvedOwnership.rootRunId,
+          [SUBAGENT_OWNER_ENV]: resolvedOwnership.owner,
         },
       });
+
+      const pid = proc.pid ?? 0;
+      const pgid = process.platform !== "win32" && pid > 0 ? pid : undefined;
+      const emitLifecycle = (event: RunLifecycleEvent) => {
+        onLifecycleEvent?.(event);
+        lifecycleWrites.push(appendLifecycleLog(processLogPath, event).catch(() => undefined));
+      };
+
+      if (pid > 0) {
+        emitLifecycle({
+          phase: "spawned",
+          runId: resolvedOwnership.runId,
+          parentRunId: resolvedOwnership.parentRunId,
+          rootRunId: resolvedOwnership.rootRunId,
+          owner: resolvedOwnership.owner,
+          pid,
+          pgid,
+        });
+      }
 
       proc.stdin.on("error", () => { /* ignore broken pipe */ });
       proc.stdin.end();
@@ -246,29 +344,91 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
       let settled = false;
       let abortHandler: (() => void) | undefined;
       let graceTimer: ReturnType<typeof setTimeout> | undefined;
+      let killTimer: ReturnType<typeof setTimeout> | undefined;
+      let terminationStarted = false;
 
       const finish = (code: number) => {
         if (settled) return;
         settled = true;
         if (graceTimer) clearTimeout(graceTimer);
+        if (killTimer) clearTimeout(killTimer);
         if (signal && abortHandler) signal.removeEventListener("abort", abortHandler);
         resolve(code);
       };
 
-      const terminateChild = () => {
-        proc.kill("SIGTERM");
-        setTimeout(() => { if (!proc.killed) proc.kill("SIGKILL"); }, KILL_TIMEOUT_MS);
+      const sendSignal = (signalName: NodeJS.Signals) => {
+        if (!pid) return;
+        try {
+          if (process.platform !== "win32") {
+            process.kill(-pid, signalName);
+          } else {
+            proc.kill(signalName);
+          }
+        } catch (error: any) {
+          if (error?.code !== "ESRCH") {
+            throw error;
+          }
+        }
+      };
+
+      const requestTermination = (reason: string, signalName: NodeJS.Signals = "SIGTERM") => {
+        if (didClose || !pid) return;
+        if (!terminationStarted) {
+          terminationStarted = true;
+          emitLifecycle({
+            phase: "terminating",
+            runId: resolvedOwnership.runId,
+            parentRunId: resolvedOwnership.parentRunId,
+            rootRunId: resolvedOwnership.rootRunId,
+            owner: resolvedOwnership.owner,
+            pid,
+            pgid,
+            reason,
+            signal: signalName,
+          });
+          sendSignal(signalName);
+          killTimer = setTimeout(() => {
+            if (didClose) return;
+            emitLifecycle({
+              phase: "terminating",
+              runId: resolvedOwnership.runId,
+              parentRunId: resolvedOwnership.parentRunId,
+              rootRunId: resolvedOwnership.rootRunId,
+              owner: resolvedOwnership.owner,
+              pid,
+              pgid,
+              reason: `${reason}:escalated`,
+              signal: "SIGKILL",
+            });
+            sendSignal("SIGKILL");
+          }, KILL_TIMEOUT_MS);
+          return;
+        }
+
+        if (signalName === "SIGKILL") {
+          emitLifecycle({
+            phase: "terminating",
+            runId: resolvedOwnership.runId,
+            parentRunId: resolvedOwnership.parentRunId,
+            rootRunId: resolvedOwnership.rootRunId,
+            owner: resolvedOwnership.owner,
+            pid,
+            pgid,
+            reason,
+            signal: signalName,
+          });
+          sendSignal(signalName);
+        }
       };
 
       const flushLine = (line: string) => {
         if (processPiJsonLine(line, result)) emitUpdate();
-        // If agent_end seen, give a grace period then finish
         if (result.sawAgentEnd && !didClose && !settled) {
           if (graceTimer) clearTimeout(graceTimer);
           graceTimer = setTimeout(() => {
             if (!didClose && !settled && result.sawAgentEnd) {
-              finish(0);
-              terminateChild();
+              semanticTerminationRequested = true;
+              requestTermination("agent_end_grace_elapsed");
             }
           }, AGENT_END_GRACE_MS);
         }
@@ -287,14 +447,46 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         result.stderr += chunk.toString();
       });
 
-      proc.on("close", (code) => {
+      proc.on("close", (code, signalName) => {
         didClose = true;
+        closeSignal = signalName ?? undefined;
+
         if (buffer.trim()) {
           for (const line of buffer.split("\n")) {
             if (line.trim()) flushLine(line);
           }
         }
-        finish(code ?? 0);
+
+        if (pid > 0) {
+          emitLifecycle({
+            phase: "closed",
+            runId: resolvedOwnership.runId,
+            parentRunId: resolvedOwnership.parentRunId,
+            rootRunId: resolvedOwnership.rootRunId,
+            owner: resolvedOwnership.owner,
+            pid,
+            pgid,
+            signal: closeSignal,
+            exitCode: code ?? null,
+          });
+        }
+
+        if (code !== null) {
+          finish(code);
+          return;
+        }
+
+        if (closeSignal === "SIGTERM") {
+          finish(143);
+          return;
+        }
+
+        if (closeSignal === "SIGKILL") {
+          finish(137);
+          return;
+        }
+
+        finish(1);
       });
 
       proc.on("error", (err) => {
@@ -305,28 +497,35 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
       if (signal) {
         abortHandler = () => {
           if (didClose || settled) return;
-          wasAborted = true;
-          terminateChild();
+
+          const hasSemanticCompletion = result.sawAgentEnd && !!getFinalOutput(result.messages).trim();
+          if (hasSemanticCompletion) {
+            semanticTerminationRequested = true;
+          } else {
+            wasAborted = true;
+          }
+
+          requestTermination("abort_signal_received");
         };
         if (signal.aborted) abortHandler();
         else signal.addEventListener("abort", abortHandler, { once: true });
       }
     });
 
+    await Promise.allSettled(lifecycleWrites);
     result.exitCode = exitCode;
 
-    // Normalize: if agent completed semantically but process exited non-zero
-    if (wasAborted) {
-      if (result.sawAgentEnd && getFinalOutput(result.messages).trim()) {
-        result.exitCode = 0;
-      } else {
-        result.exitCode = 130;
-        result.stopReason = "aborted";
-        result.errorMessage = "Subagent was aborted.";
-      }
-    } else if (result.exitCode > 0 && result.sawAgentEnd && getFinalOutput(result.messages).trim()) {
+    const hasSemanticOutput = result.sawAgentEnd && !!getFinalOutput(result.messages).trim();
+    const endedViaSemanticReap = semanticTerminationRequested && hasSemanticOutput && (closeSignal === "SIGTERM" || closeSignal === "SIGKILL");
+
+    if (endedViaSemanticReap) {
       result.exitCode = 0;
       if (result.stopReason === "error") result.stopReason = undefined;
+      result.errorMessage = undefined;
+    } else if (wasAborted) {
+      result.exitCode = 130;
+      result.stopReason = "aborted";
+      result.errorMessage = "Subagent was aborted.";
     } else if (result.exitCode > 0) {
       if (!result.stopReason) result.stopReason = "error";
       if (!result.errorMessage && result.stderr.trim()) result.errorMessage = result.stderr.trim();

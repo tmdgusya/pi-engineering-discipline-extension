@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { AutonomousDevOrchestrator } from "../orchestrator.js";
-import { AUTONOMOUS_LABELS } from "../types.js";
+import { AUTONOMOUS_LABELS, type WorkerResult, type WorkerAbortSignal, type OrchestratorConfig, type WorkerActivityCallback } from "../types.js";
 
 vi.mock("../logger.js", () => ({
   logAutonomousDev: vi.fn(),
@@ -45,7 +45,12 @@ const mockLogAutonomousDev = logAutonomousDev as unknown as ReturnType<typeof vi
 
 describe("orchestrator", () => {
   let orchestrator: AutonomousDevOrchestrator;
-  let workerSpawner: ReturnType<typeof vi.fn>;
+  let workerSpawner: Mock<[
+    issueNumber: number,
+    config: OrchestratorConfig,
+    onActivity?: WorkerActivityCallback,
+    signal?: WorkerAbortSignal
+  ], Promise<WorkerResult>>;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -117,7 +122,7 @@ describe("orchestrator", () => {
 
       const pollPromise = orchestrator.pollCycle();
       orchestrator.stop();
-      releaseListIssues?.();
+      (releaseListIssues as any)?.();
       await pollPromise;
 
       const status = orchestrator.getStatus();
@@ -162,7 +167,7 @@ describe("orchestrator", () => {
       expect(capturedSignal?.aborted).toBe(true);
 
       capturedOnActivity?.("read src/after-stop.ts");
-      resolveWorker?.({
+      (resolveWorker as any)({
         status: "completed",
         prUrl: "https://github.com/owner/repo/pull/1",
         summary: "Done",

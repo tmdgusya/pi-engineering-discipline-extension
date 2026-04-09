@@ -140,6 +140,23 @@ describe("autonomous-dev extension command registration", () => {
     });
   });
 
+  it("re-raises SIGINT after cleanup so process termination semantics are preserved", async () => {
+    process.env.PI_AUTONOMOUS_DEV = "1";
+    const onceSpy = vi.spyOn(process, "once");
+    const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true as any);
+    const { default: registerExtension } = await import("../index.js");
+    const pi = createPiMock();
+
+    registerExtension(pi);
+
+    const sigintHandler = onceSpy.mock.calls.find(([event]) => event === "SIGINT")?.[1] as (() => void) | undefined;
+    expect(sigintHandler).toBeTypeOf("function");
+
+    sigintHandler?.();
+
+    expect(killSpy).toHaveBeenCalledWith(process.pid, "SIGINT");
+  });
+
   it("installs persistent footer status and below-editor widget on session start", async () => {
     process.env.PI_AUTONOMOUS_DEV = "1";
     const { default: registerExtension } = await import("../index.js");
@@ -268,9 +285,11 @@ describe("resolveWorkerAgentConfig: provider/id regression", () => {
 
   it("agent.model with provider/id passes through unchanged", async () => {
     const { resolveWorkerAgentConfig } = await import("../index.js");
-    const agent = {
+    const agent: Parameters<typeof resolveWorkerAgentConfig>[0] = {
       name: "test-worker",
-      source: "bundled",
+      description: "test worker",
+      filePath: "test.ts",
+      source: "bundled" as const,
       model: "openai-codex/gpt-5.4",
       systemPrompt: "",
       tools: ["read", "bash"],
@@ -283,9 +302,11 @@ describe("resolveWorkerAgentConfig: provider/id regression", () => {
 
   it("no model and no session returns error", async () => {
     const { resolveWorkerAgentConfig } = await import("../index.js");
-    const agent = {
+    const agent: Parameters<typeof resolveWorkerAgentConfig>[0] = {
       name: "test-worker",
-      source: "bundled",
+      description: "test worker",
+      filePath: "test.ts",
+      source: "bundled" as const,
       model: undefined,
       systemPrompt: "",
       tools: ["read", "bash"],
