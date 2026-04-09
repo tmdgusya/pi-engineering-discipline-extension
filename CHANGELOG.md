@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.1](https://github.com/tmdgusya/roach-pi/compare/v1.6.0...v1.6.1) (2026-04-09)
+
+### Bug Fixes
+
+* **autonomous-dev:** use provider/id instead of model display name for child processes ([1962270](https://github.com/tmdgusya/roach-pi/commit/1962270fd257ac0100767655ee170283947481bc))
+
 ## [1.6.0](https://github.com/tmdgusya/roach-pi/compare/v1.5.0...v1.6.0) (2026-04-08)
 
 ### Features
