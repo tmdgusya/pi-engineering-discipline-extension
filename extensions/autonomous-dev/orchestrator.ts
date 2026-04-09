@@ -87,6 +87,7 @@ export class AutonomousDevOrchestrator {
         totalProcessed: 0,
         totalCompleted: 0,
         totalFailed: 0,
+        totalTimedOut: 0,
         totalClarificationAsked: 0,
       },
       lastPollStartedAt: null,
@@ -326,12 +327,32 @@ export class AutonomousDevOrchestrator {
     this.activeWorkerControllers.set(issueNumber, controller);
     this.status.activeWorkerCount = this.activeWorkerControllers.size;
 
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let timedOut = false;
+    const workerTimeoutMs = this.config.workerTimeoutMs;
+
+    if (workerTimeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        if (controller.signal.aborted) return;
+        timedOut = true;
+        this.logEvent("worker.timeout", {
+          level: "warn",
+          issueNumber,
+          issueTitle: tracked.title,
+          message: `Worker exceeded ${workerTimeoutMs}ms timeout, aborting`,
+          details: { workerTimeoutMs },
+        });
+        controller.abort();
+      }, workerTimeoutMs);
+    }
+
     try {
       const trackedTitle = tracked.title;
       this.logEvent("worker.started", {
         issueNumber,
         issueTitle: trackedTitle,
         message: "Launching autonomous worker",
+        details: workerTimeoutMs > 0 ? { workerTimeoutMs } : undefined,
       });
       this.updateActivity("processing issue", issueNumber, trackedTitle);
       const result = await this.workerSpawner(
@@ -348,6 +369,28 @@ export class AutonomousDevOrchestrator {
         },
         controller.signal
       );
+
+      if (timeoutId !== null) clearTimeout(timeoutId);
+
+      if (timedOut && runToken === this.runToken) {
+        this.logEvent("worker.timeout.recovering", {
+          level: "warn",
+          issueNumber,
+          issueTitle: trackedTitle,
+          message: "Recovering from worker timeout",
+        });
+        tracked.state = "failed";
+        this.status.stats.totalFailed++;
+        this.status.stats.totalTimedOut++;
+        this.status.stats.totalProcessed++;
+        await postComment(
+          this.config.repo,
+          issueNumber,
+          `⏱️ **Worker timed out** after ${workerTimeoutMs / 1000}s. Marking issue as failed.`
+        );
+        await this.handleFailure(issueNumber);
+        return;
+      }
 
       if (controller.signal.aborted || runToken !== this.runToken) {
         this.logEvent("worker.aborted", {
@@ -370,6 +413,29 @@ export class AutonomousDevOrchestrator {
       });
       await this.handleWorkerResult(issueNumber, result);
     } catch (err) {
+      if (timeoutId !== null) clearTimeout(timeoutId);
+
+      if (timedOut && runToken === this.runToken) {
+        this.logEvent("worker.timeout.recovering", {
+          level: "warn",
+          issueNumber,
+          issueTitle: tracked.title,
+          message: "Recovering from worker timeout (worker threw)",
+          details: { error: describeError(err) },
+        });
+        tracked.state = "failed";
+        this.status.stats.totalFailed++;
+        this.status.stats.totalTimedOut++;
+        this.status.stats.totalProcessed++;
+        await postComment(
+          this.config.repo,
+          issueNumber,
+          `⏱️ **Worker timed out** after ${workerTimeoutMs / 1000}s. Marking issue as failed.`
+        );
+        await this.handleFailure(issueNumber);
+        return;
+      }
+
       if (controller.signal.aborted || runToken !== this.runToken) {
         this.logEvent("worker.aborted", {
           issueNumber,
@@ -396,6 +462,7 @@ export class AutonomousDevOrchestrator {
       this.status.stats.totalProcessed++;
       await this.handleFailure(issueNumber);
     } finally {
+      if (timeoutId !== null) clearTimeout(timeoutId);
       const active = this.activeWorkerControllers.get(issueNumber);
       if (active === controller) {
         this.activeWorkerControllers.delete(issueNumber);

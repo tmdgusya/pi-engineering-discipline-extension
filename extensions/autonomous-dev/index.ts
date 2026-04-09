@@ -87,7 +87,7 @@ function formatStatusLines(orch: AutonomousDevOrchestrator): string[] {
     `Last error at: ${formatRelativeTime(status.lastErrorAt)}`,
     `Last error: ${status.lastError || "(none)"}`,
     `Log file: ${getAutonomousDevLogPath()}`,
-    `Stats: processed=${status.stats.totalProcessed}, completed=${status.stats.totalCompleted}, failed=${status.stats.totalFailed}, clarification=${status.stats.totalClarificationAsked}`,
+    `Stats: processed=${status.stats.totalProcessed}, completed=${status.stats.totalCompleted}, failed=${status.stats.totalFailed}, timedOut=${status.stats.totalTimedOut}, clarification=${status.stats.totalClarificationAsked}`,
     "Tracked issues:",
     trackedIssues,
   ];
@@ -187,6 +187,7 @@ function getOrchestrator(): AutonomousDevOrchestrator {
       repo: "",
       pollIntervalMs: 60_000,
       maxClarificationRounds: 3,
+      workerTimeoutMs: 600_000,
     });
     orchestrator.setWorkerSpawner(createAutonomousWorkerSpawner());
   }
@@ -343,7 +344,10 @@ export function buildWorkerTask(issueNumber: number, repo: string, issueContext:
 function getPreferredWorkerModel(): string | undefined {
   const inherited = getInheritedCliArgs();
   const sessionModel = activeSessionContext?.model;
-  return sessionModel?.name || (sessionModel ? `${sessionModel.provider}/${sessionModel.id}` : undefined) || inherited.fallbackModel;
+  // Always use fully-qualified provider/id — never sessionModel.name (display name like "GPT-5.4")
+  // because bare model IDs match multiple providers (e.g. gpt-5.4 exists under 5 providers)
+  // and the child pi process picks the first match, which may lack an API key.
+  return (sessionModel ? `${sessionModel.provider}/${sessionModel.id}` : undefined) || inherited.fallbackModel;
 }
 
 export async function resolveWorkerAgentConfig(agent: AgentConfig): Promise<AgentConfig | { error: string }> {
@@ -356,7 +360,7 @@ export async function resolveWorkerAgentConfig(agent: AgentConfig): Promise<Agen
     };
   }
 
-  if (sessionModel && preferredModel === (sessionModel.name || `${sessionModel.provider}/${sessionModel.id}`)) {
+  if (sessionModel && preferredModel === `${sessionModel.provider}/${sessionModel.id}`) {
     const auth = await activeSessionContext?.modelRegistry.getApiKeyAndHeaders(sessionModel);
     if (!auth?.ok || !auth.apiKey) {
       return {
@@ -523,6 +527,7 @@ export default function (pi: ExtensionAPI) {
             repo,
             pollIntervalMs: 60_000,
             maxClarificationRounds: 3,
+            workerTimeoutMs: 600_000,
           });
           if (workerSpawner) {
             orchestrator.setWorkerSpawner(workerSpawner);

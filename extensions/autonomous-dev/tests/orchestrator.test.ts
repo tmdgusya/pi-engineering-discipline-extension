@@ -578,4 +578,319 @@ describe("orchestrator", () => {
       expect(status.currentActivity).toBe("error while polling GitHub");
     });
   });
+
+  describe("worker timeout and recovery", () => {
+    it("should abort a hanging worker after timeout and move issue to failed", async () => {
+      // Create an orchestrator with a short timeout
+      orchestrator = new AutonomousDevOrchestrator({
+        repo: "owner/repo",
+        pollIntervalMs: 60_000,
+        maxClarificationRounds: 3,
+        workerTimeoutMs: 5_000,
+      });
+      orchestrator.setWorkerSpawner(workerSpawner);
+
+      let capturedSignal: AbortSignal | undefined;
+      let resolveWorker: ((value: any) => void) | null = null;
+      let markWorkerStarted: (() => void) | null = null;
+      const workerStarted = new Promise<void>((resolve) => {
+        markWorkerStarted = resolve;
+      });
+
+      // Worker that hangs indefinitely until resolved
+      workerSpawner.mockImplementationOnce(async (_issueNumber, _config, _onActivity, signal) => {
+        capturedSignal = signal;
+        markWorkerStarted?.();
+        return await new Promise((resolve) => {
+          resolveWorker = resolve;
+        });
+      });
+
+      mockListIssues.mockResolvedValueOnce([
+        {
+          number: 42,
+          title: "Hanging task",
+          body: "",
+          labels: [AUTONOMOUS_LABELS.READY],
+          author: "alice",
+          createdAt: "2026-04-01T00:00:00Z",
+        },
+      ]);
+
+      const pollPromise = orchestrator.pollCycle();
+      await workerStarted;
+
+      // Advance past the timeout
+      vi.advanceTimersByTime(5_000);
+
+      // Let the worker settle after abort
+      resolveWorker?.({
+        status: "completed",
+        prUrl: "https://github.com/owner/repo/pull/1",
+        summary: "Should be ignored",
+      });
+      await pollPromise;
+
+      // Should have aborted the worker
+      expect(capturedSignal?.aborted).toBe(true);
+
+      // Should have logged timeout
+      expect(mockLogAutonomousDev).toHaveBeenCalledWith(
+        "warn",
+        "worker.timeout",
+        expect.objectContaining({
+          issueNumber: 42,
+          message: expect.stringContaining("5000ms timeout"),
+        })
+      );
+      expect(mockLogAutonomousDev).toHaveBeenCalledWith(
+        "warn",
+        "worker.timeout.recovering",
+        expect.objectContaining({ issueNumber: 42 })
+      );
+
+      // Should post a comment about the timeout
+      expect(mockPostComment).toHaveBeenCalledWith(
+        "owner/repo",
+        42,
+        expect.stringContaining("timed out")
+      );
+
+      // Should move issue to failed
+      expect(mockSwap).toHaveBeenCalledWith(
+        "owner/repo",
+        42,
+        expect.any(Array),
+        expect.arrayContaining([AUTONOMOUS_LABELS.FAILED])
+      );
+
+      // Should update stats
+      const status = orchestrator.getStatus();
+      expect(status.stats.totalTimedOut).toBe(1);
+      expect(status.stats.totalFailed).toBe(1);
+      expect(status.stats.totalProcessed).toBe(1);
+
+      // Issue should no longer be tracked
+      expect(status.trackedIssues).toHaveLength(0);
+    });
+
+    it("should handle worker that throws after timeout", async () => {
+      orchestrator = new AutonomousDevOrchestrator({
+        repo: "owner/repo",
+        pollIntervalMs: 60_000,
+        maxClarificationRounds: 3,
+        workerTimeoutMs: 5_000,
+      });
+      orchestrator.setWorkerSpawner(workerSpawner);
+
+      let markWorkerStarted: (() => void) | null = null;
+      const workerStarted = new Promise<void>((resolve) => {
+        markWorkerStarted = resolve;
+      });
+      let rejectWorker: ((reason: any) => void) | null = null;
+
+      // Worker that will throw after abort
+      workerSpawner.mockImplementationOnce(async (_issueNumber, _config, _onActivity, signal) => {
+        markWorkerStarted?.();
+        return await new Promise((_resolve, reject) => {
+          rejectWorker = reject;
+        });
+      });
+
+      mockListIssues.mockResolvedValueOnce([
+        {
+          number: 42,
+          title: "Throwing task",
+          body: "",
+          labels: [AUTONOMOUS_LABELS.READY],
+          author: "alice",
+          createdAt: "2026-04-01T00:00:00Z",
+        },
+      ]);
+
+      const pollPromise = orchestrator.pollCycle();
+      await workerStarted;
+
+      vi.advanceTimersByTime(5_000);
+
+      rejectWorker?.(new Error("Worker aborted ungracefully"));
+      await pollPromise;
+
+      // Should still recover via timeout path
+      expect(mockSwap).toHaveBeenCalledWith(
+        "owner/repo",
+        42,
+        expect.any(Array),
+        expect.arrayContaining([AUTONOMOUS_LABELS.FAILED])
+      );
+      expect(mockPostComment).toHaveBeenCalledWith(
+        "owner/repo",
+        42,
+        expect.stringContaining("timed out")
+      );
+
+      const status = orchestrator.getStatus();
+      expect(status.stats.totalTimedOut).toBe(1);
+      expect(status.stats.totalFailed).toBe(1);
+    });
+
+    it("should not timeout when workerTimeoutMs is 0", async () => {
+      orchestrator = new AutonomousDevOrchestrator({
+        repo: "owner/repo",
+        pollIntervalMs: 60_000,
+        maxClarificationRounds: 3,
+        workerTimeoutMs: 0,
+      });
+      orchestrator.setWorkerSpawner(workerSpawner);
+
+      let markWorkerStarted: (() => void) | null = null;
+      const workerStarted = new Promise<void>((resolve) => {
+        markWorkerStarted = resolve;
+      });
+      let resolveWorker: ((value: any) => void) | null = null;
+
+      workerSpawner.mockImplementationOnce(async (_issueNumber, _config, _onActivity, _signal) => {
+        markWorkerStarted?.();
+        return await new Promise((resolve) => {
+          resolveWorker = resolve;
+        });
+      });
+
+      mockListIssues.mockResolvedValueOnce([
+        {
+          number: 42,
+          title: "Long task",
+          body: "",
+          labels: [AUTONOMOUS_LABELS.READY],
+          author: "alice",
+          createdAt: "2026-04-01T00:00:00Z",
+        },
+      ]);
+
+      const pollPromise = orchestrator.pollCycle();
+      await workerStarted;
+
+      // Advance time well beyond what would be a timeout
+      vi.advanceTimersByTime(600_000);
+
+      // Worker should still be running - not aborted
+      resolveWorker?.({
+        status: "completed",
+        prUrl: "https://github.com/owner/repo/pull/1",
+        summary: "Completed without timeout",
+      });
+      await pollPromise;
+
+      // Should complete normally, not timeout
+      expect(mockSwap).toHaveBeenCalledWith(
+        "owner/repo",
+        42,
+        expect.any(Array),
+        expect.arrayContaining([AUTONOMOUS_LABELS.COMPLETED])
+      );
+      expect(mockPostComment).toHaveBeenCalledWith(
+        "owner/repo",
+        42,
+        expect.stringContaining("Autonomous implementation complete")
+      );
+
+      const status = orchestrator.getStatus();
+      expect(status.stats.totalTimedOut).toBe(0);
+      expect(status.stats.totalCompleted).toBe(1);
+    });
+
+    it("should not trigger timeout recovery when engine is stopped during timeout", async () => {
+      orchestrator = new AutonomousDevOrchestrator({
+        repo: "owner/repo",
+        pollIntervalMs: 60_000,
+        maxClarificationRounds: 3,
+        workerTimeoutMs: 5_000,
+      });
+      orchestrator.setWorkerSpawner(workerSpawner);
+
+      let markWorkerStarted: (() => void) | null = null;
+      const workerStarted = new Promise<void>((resolve) => {
+        markWorkerStarted = resolve;
+      });
+      let resolveWorker: ((value: any) => void) | null = null;
+
+      workerSpawner.mockImplementationOnce(async (_issueNumber, _config, _onActivity, signal) => {
+        markWorkerStarted?.();
+        return await new Promise((resolve) => {
+          resolveWorker = resolve;
+        });
+      });
+
+      mockListIssues.mockResolvedValueOnce([
+        {
+          number: 42,
+          title: "Task",
+          body: "",
+          labels: [AUTONOMOUS_LABELS.READY],
+          author: "alice",
+          createdAt: "2026-04-01T00:00:00Z",
+        },
+      ]);
+
+      const pollPromise = orchestrator.pollCycle();
+      await workerStarted;
+
+      // Advance past timeout
+      vi.advanceTimersByTime(5_000);
+
+      // Now stop the engine (simulating a shutdown during timeout)
+      orchestrator.stop();
+
+      resolveWorker?.({
+        status: "completed",
+        prUrl: "https://github.com/owner/repo/pull/1",
+        summary: "Should be ignored",
+      });
+      await pollPromise;
+
+      // Should NOT post timeout comment or swap labels - engine was stopped
+      expect(mockPostComment).not.toHaveBeenCalledWith(
+        "owner/repo",
+        42,
+        expect.stringContaining("timed out")
+      );
+      expect(mockSwap).not.toHaveBeenCalled();
+    });
+
+    it("should include workerTimeoutMs in worker started log", async () => {
+      orchestrator = new AutonomousDevOrchestrator({
+        repo: "owner/repo",
+        pollIntervalMs: 60_000,
+        maxClarificationRounds: 3,
+        workerTimeoutMs: 30_000,
+      });
+      orchestrator.setWorkerSpawner(workerSpawner);
+
+      mockListIssues.mockResolvedValueOnce([
+        {
+          number: 42,
+          title: "Timed task",
+          body: "",
+          labels: [AUTONOMOUS_LABELS.READY],
+          author: "alice",
+          createdAt: "2026-04-01T00:00:00Z",
+        },
+      ]);
+
+      await orchestrator.pollCycle();
+
+      expect(mockLogAutonomousDev).toHaveBeenCalledWith(
+        "info",
+        "worker.started",
+        expect.objectContaining({
+          details: { workerTimeoutMs: 30_000 },
+        })
+      );
+    });
+
+    it("should initialize totalTimedOut stat at 0", () => {
+      const status = orchestrator.getStatus();
+      expect(status.stats.totalTimedOut).toBe(0);
+    });
+  });
 });

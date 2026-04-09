@@ -59,6 +59,8 @@ export interface OrchestratorConfig {
   maxClarificationRounds: number;
   /** Branch prefix for autonomous dev branches (default: "autonomous/") */
   branchPrefix: string;
+  /** Worker execution timeout in milliseconds (default: 600000 = 10m, 0 = disabled) */
+  workerTimeoutMs: number;
 }
 
 export const DEFAULT_CONFIG: OrchestratorConfig = {
@@ -66,6 +68,7 @@ export const DEFAULT_CONFIG: OrchestratorConfig = {
   pollIntervalMs: 60_000,
   maxClarificationRounds: 3,
   branchPrefix: "autonomous/",
+  workerTimeoutMs: 600_000,
 };
 
 export interface TrackedIssue {
@@ -88,6 +91,7 @@ export interface OrchestratorStatus {
     totalProcessed: number;
     totalCompleted: number;
     totalFailed: number;
+    totalTimedOut: number;
     totalClarificationAsked: number;
   };
   lastPollStartedAt: string | null;
