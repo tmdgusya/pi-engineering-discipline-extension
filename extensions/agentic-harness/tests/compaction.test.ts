@@ -36,6 +36,20 @@ describe("Compaction Prompts", () => {
     expect(prompt).toContain("docs/milestones.md");
   });
 
+  it("should include phase-specific section for reviewing without a goal document", () => {
+    const prompt = getCompactionPrompt("reviewing", null);
+    expect(prompt).toContain("Active Workflow: Code Review");
+    expect(prompt).toContain("resolved review target");
+    expect(prompt).toContain("No changes to review");
+  });
+
+  it("should include phase-specific section for ultrareviewing without a goal document", () => {
+    const prompt = getCompactionPrompt("ultrareviewing", null);
+    expect(prompt).toContain("Active Workflow: Deep Code Review");
+    expect(prompt).toContain("shared diff artifact");
+    expect(prompt).toContain("Stage 2 verification status");
+  });
+
   it("should append custom instructions when provided", () => {
     const prompt = getCompactionPrompt("idle", null, "Focus on TypeScript changes");
     expect(prompt).toContain("Focus on TypeScript changes");

@@ -781,7 +781,8 @@ export default function (pi: ExtensionAPI) {
       }
 
       currentPhase = "reviewing";
-      updateState(STATE_FILE, { phase: "reviewing" }).catch(() => {});
+      activeGoalDocument = null;
+      updateState(STATE_FILE, { phase: "reviewing", activeGoalDocument: null }).catch(() => {});
       ctx.ui.setStatus("harness", "Code review in progress...");
 
       const targetClause = topic
@@ -829,7 +830,8 @@ export default function (pi: ExtensionAPI) {
       if (!confirmed) return;
 
       currentPhase = "ultrareviewing";
-      updateState(STATE_FILE, { phase: "ultrareviewing" }).catch(() => {});
+      activeGoalDocument = null;
+      updateState(STATE_FILE, { phase: "ultrareviewing", activeGoalDocument: null }).catch(() => {});
       ctx.ui.setStatus("harness", "Ultrareview pipeline in progress...");
 
       const targetClause = topic
@@ -845,6 +847,8 @@ export default function (pi: ExtensionAPI) {
         "",
         "## Stage 1: Finding (parallel fleet)",
         "",
+        "First, resolve the diff once and write it to a shared artifact such as `docs/engineering-discipline/reviews/.tmp/<date>-<topic>.diff` so all reviewers can read the same source without duplicating the full diff payload 10 times.",
+        "",
         "Dispatch **10 subagents in parallel** using the subagent tool's parallel mode. This is 5 reviewer roles × 2 seeds each:",
         "- reviewer-bug (seed 1, seed 2)",
         "- reviewer-security (seed 1, seed 2)",
@@ -853,9 +857,10 @@ export default function (pi: ExtensionAPI) {
         "- reviewer-consistency (seed 1, seed 2)",
         "",
         "For each task in the tasks array, the `task` field must include:",
-        "1. The full diff text (inline)",
+        "1. The shared diff artifact path (or, only if absolutely necessary for a very small diff, a minimal relevant diff excerpt rather than the full inline diff)",
         "2. The list of affected file paths",
         "3. The seed number with this instruction: seed 1 = \"Perform a fresh independent pass\"; seed 2 = \"You are seed 2 — focus on findings seed 1 might miss by examining edge cases and alternative execution paths.\"",
+        "4. An explicit instruction to read the shared diff artifact before opening touched files",
         "",
         "Invoke the subagent tool ONCE in parallel mode with a tasks array of 10 entries.",
         "",

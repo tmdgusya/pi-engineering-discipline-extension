@@ -48,12 +48,15 @@ function getPhaseSection(
   phase: ExtensionState["phase"],
   goalDoc: string | null,
 ): string {
-  if (phase === "idle" || !goalDoc) return "";
+  if (phase === "idle") return "";
 
-  const docRef = `\n\nACTIVE GOAL DOCUMENT: \`${goalDoc}\`\nThis document contains the authoritative goal for the current work. Reference it in your summary to anchor the user's intent.\n`;
+  const docRef = goalDoc
+    ? `\n\nACTIVE GOAL DOCUMENT: \`${goalDoc}\`\nThis document contains the authoritative goal for the current work. Reference it in your summary to anchor the user's intent.\n`
+    : "";
 
   switch (phase) {
     case "clarifying":
+      if (!goalDoc) return "";
       return `${docRef}
 ## Active Workflow: Agentic Clarification
 The session is in agentic-clarification mode. Your summary MUST emphasize:
@@ -62,6 +65,7 @@ The session is in agentic-clarification mode. Your summary MUST emphasize:
 - The state of the Context Brief (complete, in-progress, or not yet started)`;
 
     case "planning":
+      if (!goalDoc) return "";
       return `${docRef}
 ## Active Workflow: Agentic Plan Crafting
 The session is in agentic-plan-crafting mode. Your summary MUST emphasize:
@@ -70,12 +74,31 @@ The session is in agentic-plan-crafting mode. Your summary MUST emphasize:
 - Current task being worked on and its exact state`;
 
     case "ultraplanning":
+      if (!goalDoc) return "";
       return `${docRef}
 ## Active Workflow: Agentic Milestone Planning
 The session is in agentic-milestone-planning mode. Your summary MUST emphasize:
 - Which reviewers have completed and their key findings
 - The state of the milestone DAG (complete, in-progress)
 - Trade-off decisions made with the user`;
+
+    case "reviewing":
+      return `${docRef}
+## Active Workflow: Code Review
+The session is in /review mode. Your summary MUST emphasize:
+- The resolved review target (PR, branch, or local diff) and how it was obtained
+- The files and diff regions that were inspected
+- The current finding set across bugs, security, performance, test coverage, and consistency
+- Whether the review concluded with findings or with \"No changes to review\"`;
+
+    case "ultrareviewing":
+      return `${docRef}
+## Active Workflow: Deep Code Review
+The session is in /ultrareview mode. Your summary MUST emphasize:
+- The resolved review target and where the shared diff artifact/report path was written
+- Stage 1 reviewer coverage (roles, seeds, and whether all 10 completed)
+- Stage 2 verification status and the final surviving findings
+- Stage 3 synthesis status, saved report path, and top-priority findings streamed to chat`;
 
     default:
       return "";

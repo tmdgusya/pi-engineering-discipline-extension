@@ -254,6 +254,28 @@ describe("before_agent_start Event", () => {
       else process.env.PI_SUBAGENT_DEPTH = prevDepth;
     }
   });
+
+  it("should inject review workflow guidance after /review", async () => {
+    const { mockPi, events, commands } = createMockPi();
+    extension(mockPi);
+
+    const review = commands.get("review");
+    await review.handler("123", {
+      ui: {
+        setStatus: vi.fn(),
+        notify: vi.fn(),
+      },
+    } as any);
+
+    const handlers = events.get("before_agent_start")!;
+    const result = await handlers[0](
+      { type: "before_agent_start", prompt: "test", systemPrompt: "base" },
+      { cwd: "." } as any
+    );
+
+    expect(result?.systemPrompt).toContain("Active Workflow: Code Review (/review)");
+    expect(result?.systemPrompt).toContain("Do NOT dispatch subagents");
+  });
 });
 
 describe("/clarify Command", () => {

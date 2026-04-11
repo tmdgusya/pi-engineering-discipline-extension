@@ -171,7 +171,10 @@ describe("Ultrareview Command (/ultrareview)", () => {
     expect(prompt).toContain("seed 1");
     expect(prompt).toContain("seed 2");
 
-    // File output convention
+    // Shared diff artifact + file output convention
+    expect(prompt).toContain("shared artifact");
+    expect(prompt).toContain(".tmp/<date>-<topic>.diff");
+    expect(prompt).not.toContain("The full diff text (inline)");
     expect(prompt).toContain("docs/engineering-discipline/reviews/");
 
     // ai-slop-cleaner isolation guard

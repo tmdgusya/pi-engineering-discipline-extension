@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
-import { join, resolve } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { runAgent, resolveDepthConfig } from "../subagent.js";
 
-const fixtureScript = resolve("extensions/agentic-harness/tests/fixtures/subagent-parent.mjs");
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const fixtureScript = join(__dirname, "fixtures", "subagent-parent.mjs");
 const originalArgv = [...process.argv];
 const trackedPids = new Set<number>();
 const tempDirs: string[] = [];
