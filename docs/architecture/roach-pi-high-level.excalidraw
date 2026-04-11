@@ -1,0 +1,1079 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "hermes-agent",
+  "elements": [
+    {
+      "type": "text",
+      "id": "title",
+      "x": 620,
+      "y": 20,
+      "text": "ROACH PI High-Level Architecture",
+      "fontSize": 30,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "originalText": "ROACH PI High-Level Architecture",
+      "autoResize": true
+    },
+    {
+      "type": "text",
+      "id": "subtitle",
+      "x": 430,
+      "y": 58,
+      "text": "pi extension suite for agentic workflow control, recurring jobs, and autonomous GitHub issue execution",
+      "fontSize": 18,
+      "fontFamily": 1,
+      "strokeColor": "#555555",
+      "originalText": "pi extension suite for agentic workflow control, recurring jobs, and autonomous GitHub issue execution",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "zone_runtime",
+      "x": 30,
+      "y": 115,
+      "width": 1710,
+      "height": 350,
+      "backgroundColor": "#f8f9fa",
+      "fillStyle": "solid",
+      "strokeColor": "#ced4da",
+      "strokeWidth": 1,
+      "roundness": {
+        "type": 3
+      },
+      "opacity": 35
+    },
+    {
+      "type": "text",
+      "id": "zone_runtime_label",
+      "x": 50,
+      "y": 122,
+      "text": "Runtime path",
+      "fontSize": 16,
+      "fontFamily": 1,
+      "strokeColor": "#666666",
+      "originalText": "Runtime path",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "zone_state",
+      "x": 30,
+      "y": 500,
+      "width": 1710,
+      "height": 210,
+      "backgroundColor": "#f8f9fa",
+      "fillStyle": "solid",
+      "strokeColor": "#ced4da",
+      "strokeWidth": 1,
+      "roundness": {
+        "type": 3
+      },
+      "opacity": 35
+    },
+    {
+      "type": "text",
+      "id": "zone_state_label",
+      "x": 50,
+      "y": 507,
+      "text": "State, observability, and external systems",
+      "fontSize": 16,
+      "fontFamily": 1,
+      "strokeColor": "#666666",
+      "originalText": "State, observability, and external systems",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "user",
+      "x": 60,
+      "y": 250,
+      "width": 180,
+      "height": 80,
+      "roundness": {
+        "type": 3
+      },
+      "backgroundColor": "#ffd8a8",
+      "fillStyle": "solid",
+      "strokeColor": "#f59e0b",
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "boundElements": [
+        {
+          "id": "t_user",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "t_user",
+      "x": 66,
+      "y": 258,
+      "width": 168,
+      "height": 64,
+      "text": "User / pi TUI",
+      "fontSize": 20,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "user",
+      "originalText": "User / pi TUI",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "pi_runtime",
+      "x": 300,
+      "y": 215,
+      "width": 250,
+      "height": 150,
+      "roundness": {
+        "type": 3
+      },
+      "backgroundColor": "#a5d8ff",
+      "fillStyle": "solid",
+      "strokeColor": "#4a9eed",
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "boundElements": [
+        {
+          "id": "t_pi_runtime",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "t_pi_runtime",
+      "x": 306,
+      "y": 223,
+      "width": 238,
+      "height": 134,
+      "text": "pi runtime\n\nTool registry\nCommands\nEvent hooks\nUI surface",
+      "fontSize": 20,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "pi_runtime",
+      "originalText": "pi runtime\n\nTool registry\nCommands\nEvent hooks\nUI surface",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "manifest",
+      "x": 300,
+      "y": 385,
+      "width": 250,
+      "height": 60,
+      "roundness": {
+        "type": 3
+      },
+      "backgroundColor": "#f1f3f5",
+      "fillStyle": "solid",
+      "strokeColor": "#868e96",
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "boundElements": [
+        {
+          "id": "t_manifest",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "t_manifest",
+      "x": 306,
+      "y": 393,
+      "width": 238,
+      "height": 44,
+      "text": "package.json\nregisters extension entrypoints",
+      "fontSize": 18,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "manifest",
+      "originalText": "package.json\nregisters extension entrypoints",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "suite",
+      "x": 620,
+      "y": 145,
+      "width": 360,
+      "height": 300,
+      "roundness": {
+        "type": 3
+      },
+      "backgroundColor": "#b2f2bb",
+      "fillStyle": "solid",
+      "strokeColor": "#2f9e44",
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "boundElements": [
+        {
+          "id": "t_suite",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "t_suite",
+      "x": 626,
+      "y": 153,
+      "width": 348,
+      "height": 284,
+      "text": "ROACH PI extension suite",
+      "fontSize": 24,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "suite",
+      "originalText": "ROACH PI extension suite",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "harness",
+      "x": 650,
+      "y": 195,
+      "width": 300,
+      "height": 90,
+      "roundness": {
+        "type": 3
+      },
+      "backgroundColor": "#e6fcf5",
+      "fillStyle": "solid",
+      "strokeColor": "#12b886",
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "boundElements": [
+        {
+          "id": "t_harness",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "t_harness",
+      "x": 656,
+      "y": 203,
+      "width": 288,
+      "height": 74,
+      "text": "agentic-harness\n\n/clarify  /plan  /ultraplan\nask_user_question  subagent  webfetch",
+      "fontSize": 18,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "harness",
+      "originalText": "agentic-harness\n\n/clarify  /plan  /ultraplan\nask_user_question  subagent  webfetch",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "loop",
+      "x": 650,
+      "y": 305,
+      "width": 140,
+      "height": 70,
+      "roundness": {
+        "type": 3
+      },
+      "backgroundColor": "#fff3bf",
+      "fillStyle": "solid",
+      "strokeColor": "#f59f00",
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "boundElements": [
+        {
+          "id": "t_loop",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "t_loop",
+      "x": 656,
+      "y": 313,
+      "width": 128,
+      "height": 54,
+      "text": "session-loop\n\nrecurring prompt jobs",
+      "fontSize": 18,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "loop",
+      "originalText": "session-loop\n\nrecurring prompt jobs",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "autodev",
+      "x": 810,
+      "y": 305,
+      "width": 140,
+      "height": 70,
+      "roundness": {
+        "type": 3
+      },
+      "backgroundColor": "#ffc9c9",
+      "fillStyle": "solid",
+      "strokeColor": "#e03131",
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "boundElements": [
+        {
+          "id": "t_autodev",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "t_autodev",
+      "x": 816,
+      "y": 313,
+      "width": 128,
+      "height": 54,
+      "text": "autonomous-dev\n\nGitHub issue engine",
+      "fontSize": 18,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "autodev",
+      "originalText": "autonomous-dev\n\nGitHub issue engine",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "assets",
+      "x": 1040,
+      "y": 165,
+      "width": 280,
+      "height": 100,
+      "roundness": {
+        "type": 3
+      },
+      "backgroundColor": "#d0bfff",
+      "fillStyle": "solid",
+      "strokeColor": "#845ef7",
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "boundElements": [
+        {
+          "id": "t_assets",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "t_assets",
+      "x": 1046,
+      "y": 173,
+      "width": 268,
+      "height": 84,
+      "text": "Bundled agents + skills\n\nMarkdown agent prompts\nMarkdown skill rules",
+      "fontSize": 18,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "assets",
+      "originalText": "Bundled agents + skills\n\nMarkdown agent prompts\nMarkdown skill rules",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "child_pi",
+      "x": 1040,
+      "y": 315,
+      "width": 280,
+      "height": 90,
+      "roundness": {
+        "type": 3
+      },
+      "backgroundColor": "#c3fae8",
+      "fillStyle": "solid",
+      "strokeColor": "#12b886",
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "boundElements": [
+        {
+          "id": "t_child_pi",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "t_child_pi",
+      "x": 1046,
+      "y": 323,
+      "width": 268,
+      "height": 74,
+      "text": "Child pi processes\n\nspawned by subagent / worker pipeline",
+      "fontSize": 18,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "child_pi",
+      "originalText": "Child pi processes\n\nspawned by subagent / worker pipeline",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "github",
+      "x": 1380,
+      "y": 195,
+      "width": 280,
+      "height": 90,
+      "roundness": {
+        "type": 3
+      },
+      "backgroundColor": "#ffd8a8",
+      "fillStyle": "solid",
+      "strokeColor": "#f08c00",
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "boundElements": [
+        {
+          "id": "t_github",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "t_github",
+      "x": 1386,
+      "y": 203,
+      "width": 268,
+      "height": 74,
+      "text": "GitHub\n\nissue polling\ncomments / labels\nPR creation",
+      "fontSize": 20,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "github",
+      "originalText": "GitHub\n\nissue polling\ncomments / labels\nPR creation",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "repo",
+      "x": 1380,
+      "y": 325,
+      "width": 280,
+      "height": 90,
+      "roundness": {
+        "type": 3
+      },
+      "backgroundColor": "#a5d8ff",
+      "fillStyle": "solid",
+      "strokeColor": "#4a9eed",
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "boundElements": [
+        {
+          "id": "t_repo",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "t_repo",
+      "x": 1386,
+      "y": 333,
+      "width": 268,
+      "height": 74,
+      "text": "Local repo / filesystem\n\nread / edit / validate / commit",
+      "fontSize": 20,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "repo",
+      "originalText": "Local repo / filesystem\n\nread / edit / validate / commit",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "state",
+      "x": 60,
+      "y": 545,
+      "width": 370,
+      "height": 120,
+      "roundness": {
+        "type": 3
+      },
+      "backgroundColor": "#fff3bf",
+      "fillStyle": "solid",
+      "strokeColor": "#f59f00",
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "boundElements": [
+        {
+          "id": "t_state",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "t_state",
+      "x": 66,
+      "y": 553,
+      "width": 358,
+      "height": 104,
+      "text": "Local state\n\n~/.pi/extension-state.json\nworkflow phase + active goal metadata",
+      "fontSize": 18,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "state",
+      "originalText": "Local state\n\n~/.pi/extension-state.json\nworkflow phase + active goal metadata",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "ui_obs",
+      "x": 500,
+      "y": 545,
+      "width": 430,
+      "height": 120,
+      "roundness": {
+        "type": 3
+      },
+      "backgroundColor": "#d0ebff",
+      "fillStyle": "solid",
+      "strokeColor": "#228be6",
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "boundElements": [
+        {
+          "id": "t_ui_obs",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "t_ui_obs",
+      "x": 506,
+      "y": 553,
+      "width": 418,
+      "height": 104,
+      "text": "Observability\n\nfooter cache/context stats\nstatus lines\nbelow-editor widget\nROACH PI banner",
+      "fontSize": 18,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "ui_obs",
+      "originalText": "Observability\n\nfooter cache/context stats\nstatus lines\nbelow-editor widget\nROACH PI banner",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "logs",
+      "x": 1000,
+      "y": 545,
+      "width": 320,
+      "height": 120,
+      "roundness": {
+        "type": 3
+      },
+      "backgroundColor": "#f1f3f5",
+      "fillStyle": "solid",
+      "strokeColor": "#868e96",
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "boundElements": [
+        {
+          "id": "t_logs",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "t_logs",
+      "x": 1006,
+      "y": 553,
+      "width": 308,
+      "height": 104,
+      "text": "Engine logs / runtime output\n\n~/.pi/autonomous-dev.log\nsession-loop cleanup logs",
+      "fontSize": 18,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "logs",
+      "originalText": "Engine logs / runtime output\n\n~/.pi/autonomous-dev.log\nsession-loop cleanup logs",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "note",
+      "x": 1380,
+      "y": 545,
+      "width": 280,
+      "height": 120,
+      "roundness": {
+        "type": 3
+      },
+      "backgroundColor": "#e9ecef",
+      "fillStyle": "solid",
+      "strokeColor": "#495057",
+      "strokeStyle": "solid",
+      "opacity": 100,
+      "boundElements": [
+        {
+          "id": "t_note",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "t_note",
+      "x": 1386,
+      "y": 553,
+      "width": 268,
+      "height": 104,
+      "text": "Main architectural idea\n\nagentic-harness is the orchestration core\nother extensions reuse pi events, UI, and child-process execution patterns",
+      "fontSize": 18,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "containerId": "note",
+      "originalText": "Main architectural idea\n\nagentic-harness is the orchestration core\nother extensions reuse pi events, UI, and child-process execution patterns",
+      "autoResize": true
+    },
+    {
+      "type": "arrow",
+      "id": "a_user_pi",
+      "x": 240,
+      "y": 290,
+      "width": 60,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          60,
+          0
+        ]
+      ],
+      "endArrowhead": "arrow",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2
+    },
+    {
+      "type": "arrow",
+      "id": "a_pi_suite",
+      "x": 550,
+      "y": 290,
+      "width": 70,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          70,
+          0
+        ]
+      ],
+      "endArrowhead": "arrow",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2
+    },
+    {
+      "type": "text",
+      "id": "lab_pi_suite",
+      "x": 563,
+      "y": 255,
+      "text": "extension entrypoints",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "strokeColor": "#555555",
+      "originalText": "extension entrypoints",
+      "autoResize": true
+    },
+    {
+      "type": "arrow",
+      "id": "a_manifest_suite",
+      "x": 550,
+      "y": 415,
+      "width": 70,
+      "height": -95,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          70,
+          -95
+        ]
+      ],
+      "endArrowhead": "arrow",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2,
+      "strokeStyle": "dashed"
+    },
+    {
+      "type": "text",
+      "id": "lab_manifest_suite",
+      "x": 498,
+      "y": 392,
+      "text": "registration source",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "strokeColor": "#777777",
+      "originalText": "registration source",
+      "autoResize": true
+    },
+    {
+      "type": "arrow",
+      "id": "a_harness_assets",
+      "x": 950,
+      "y": 240,
+      "width": 90,
+      "height": -20,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          90,
+          -20
+        ]
+      ],
+      "endArrowhead": "arrow",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2
+    },
+    {
+      "type": "text",
+      "id": "lab_harness_assets",
+      "x": 970,
+      "y": 200,
+      "text": "discover + load",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "strokeColor": "#555555",
+      "originalText": "discover + load",
+      "autoResize": true
+    },
+    {
+      "type": "arrow",
+      "id": "a_harness_child",
+      "x": 950,
+      "y": 255,
+      "width": 90,
+      "height": 95,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          90,
+          95
+        ]
+      ],
+      "endArrowhead": "arrow",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2
+    },
+    {
+      "type": "text",
+      "id": "lab_harness_child",
+      "x": 965,
+      "y": 310,
+      "text": "runAgent()",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "strokeColor": "#555555",
+      "originalText": "runAgent()",
+      "autoResize": true
+    },
+    {
+      "type": "arrow",
+      "id": "a_assets_child",
+      "x": 1180,
+      "y": 265,
+      "width": 0,
+      "height": 50,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          50
+        ]
+      ],
+      "endArrowhead": "arrow",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2,
+      "strokeStyle": "dashed"
+    },
+    {
+      "type": "text",
+      "id": "lab_assets_child",
+      "x": 1188,
+      "y": 285,
+      "text": "selected agent config",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "strokeColor": "#777777",
+      "originalText": "selected agent config",
+      "autoResize": true
+    },
+    {
+      "type": "arrow",
+      "id": "a_child_repo",
+      "x": 1320,
+      "y": 360,
+      "width": 60,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          60,
+          0
+        ]
+      ],
+      "endArrowhead": "arrow",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2
+    },
+    {
+      "type": "text",
+      "id": "lab_child_repo",
+      "x": 1328,
+      "y": 328,
+      "text": "code work",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "strokeColor": "#555555",
+      "originalText": "code work",
+      "autoResize": true
+    },
+    {
+      "type": "arrow",
+      "id": "a_autodev_github",
+      "x": 950,
+      "y": 340,
+      "width": 430,
+      "height": -95,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          430,
+          -95
+        ]
+      ],
+      "endArrowhead": "arrow",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2
+    },
+    {
+      "type": "text",
+      "id": "lab_autodev_github",
+      "x": 1120,
+      "y": 220,
+      "text": "poll + mutate issues/PRs",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "strokeColor": "#555555",
+      "originalText": "poll + mutate issues/PRs",
+      "autoResize": true
+    },
+    {
+      "type": "arrow",
+      "id": "a_autodev_child",
+      "x": 950,
+      "y": 340,
+      "width": 90,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          90,
+          0
+        ]
+      ],
+      "endArrowhead": "arrow",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2
+    },
+    {
+      "type": "text",
+      "id": "lab_autodev_child",
+      "x": 970,
+      "y": 350,
+      "text": "worker spawn",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "strokeColor": "#555555",
+      "originalText": "worker spawn",
+      "autoResize": true
+    },
+    {
+      "type": "arrow",
+      "id": "a_loop_pi",
+      "x": 650,
+      "y": 340,
+      "width": -100,
+      "height": 0,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -100,
+          0
+        ]
+      ],
+      "endArrowhead": "arrow",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2
+    },
+    {
+      "type": "text",
+      "id": "lab_loop_pi",
+      "x": 560,
+      "y": 350,
+      "text": "follow-up prompts",
+      "fontSize": 14,
+      "fontFamily": 1,
+      "strokeColor": "#555555",
+      "originalText": "follow-up prompts",
+      "autoResize": true
+    },
+    {
+      "type": "arrow",
+      "id": "a_suite_state",
+      "x": 720,
+      "y": 445,
+      "width": -380,
+      "height": 100,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -380,
+          100
+        ]
+      ],
+      "endArrowhead": "arrow",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2
+    },
+    {
+      "type": "arrow",
+      "id": "a_suite_ui",
+      "x": 790,
+      "y": 445,
+      "width": -40,
+      "height": 100,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -40,
+          100
+        ]
+      ],
+      "endArrowhead": "arrow",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2
+    },
+    {
+      "type": "arrow",
+      "id": "a_autodev_logs",
+      "x": 880,
+      "y": 375,
+      "width": 180,
+      "height": 170,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          180,
+          170
+        ]
+      ],
+      "endArrowhead": "arrow",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2
+    },
+    {
+      "type": "arrow",
+      "id": "a_autodev_ui",
+      "x": 880,
+      "y": 375,
+      "width": -90,
+      "height": 170,
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          -90,
+          170
+        ]
+      ],
+      "endArrowhead": "arrow",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff"
+  }
+}

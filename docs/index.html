@@ -38,6 +38,7 @@
       <ul>
         <li><a href="#why">● <span data-lang="en">Why ROACH PI?</span><span data-lang="ko">왜 ROACH PI?</span></a></li>
         <li><a href="#quickstart">▶ <span data-lang="en">Quick Start</span><span data-lang="ko">빠른 시작</span></a></li>
+        <li><a href="#architecture">◆ <span data-lang="en">Architecture</span><span data-lang="ko">아키텍처</span></a></li>
         <li><a href="#features">■ <span data-lang="en">Features</span><span data-lang="ko">기능</span></a></li>
         <li><a href="#faq">● <span data-lang="en">FAQ</span><span data-lang="ko">FAQ</span></a></li>
         <li><a href="https://github.com/tmdgusya/pi-engineering-discipline-extension" target="_blank">→ GitHub</a></li>
@@ -248,6 +249,75 @@
         </p>
         <p data-lang="ko" style="margin-bottom: 0;">
           <strong>💡 팁:</strong> <code>ask_user_question</code> 도구는 항상 사용 가능합니다 — <code>/clarify</code> 모드 외에서도 모호성을 감지하면 자동으로 질문합니다.
+        </p>
+      </div>
+    </section>
+
+    <!-- Architecture -->
+    <section class="section" id="architecture">
+      <h2>
+        <span class="icon">◆</span>
+        <span data-lang="en">Architecture</span>
+        <span data-lang="ko">아키텍처</span>
+      </h2>
+
+      <p data-lang="en">
+        ROACH PI is organized as a layered extension suite on top of the <strong>pi</strong> runtime. The main architectural idea is simple: <strong>agentic-harness</strong> acts as the orchestration core, while <strong>session-loop</strong> and <strong>autonomous-dev</strong> add specialized execution modes around the same host runtime.
+      </p>
+      <p data-lang="ko">
+        ROACH PI는 <strong>pi</strong> 런타임 위에 올라가는 계층형 익스텐션 스위트입니다. 핵심 아이디어는 단순합니다. <strong>agentic-harness</strong>가 오케스트레이션 코어 역할을 하고, <strong>session-loop</strong>와 <strong>autonomous-dev</strong>가 같은 호스트 런타임 위에 특화된 실행 모드를 추가합니다.
+      </p>
+
+      <div class="grid-2" style="margin-top: 1.5rem;">
+        <div class="card">
+          <span class="feature-icon">◆</span>
+          <div class="feature-title">
+            <span data-lang="en">Core Layers</span>
+            <span data-lang="ko">핵심 계층</span>
+          </div>
+          <div class="feature-desc">
+            <p data-lang="en">
+              <strong>pi runtime</strong> provides the tool registry, command surface, lifecycle hooks, and TUI UI. ROACH PI then injects commands, tools, event handlers, bundled agents, and recurring or autonomous workflows on top of that base.
+            </p>
+            <p data-lang="ko">
+              <strong>pi 런타임</strong>은 도구 레지스트리, 명령 표면, 라이프사이클 훅, TUI UI를 제공합니다. 그 위에 ROACH PI가 명령, 도구, 이벤트 핸들러, 번들 에이전트, 반복/자율 워크플로를 주입합니다.
+            </p>
+          </div>
+        </div>
+
+        <div class="card">
+          <span class="feature-icon">▶</span>
+          <div class="feature-title">
+            <span data-lang="en">Shared Execution Primitive</span>
+            <span data-lang="ko">공유 실행 프리미티브</span>
+          </div>
+          <div class="feature-desc">
+            <p data-lang="en">
+              Both subagents and autonomous issue workers rely on spawned child <code>pi</code> processes. This keeps the orchestration layer small and reuses the same execution model for exploration, planning, validation, and GitHub-driven work.
+            </p>
+            <p data-lang="ko">
+              서브에이전트와 자율 이슈 워커는 모두 child <code>pi</code> 프로세스 실행 패턴을 사용합니다. 덕분에 오케스트레이션 레이어를 작게 유지하면서 탐색, 계획, 검증, GitHub 기반 작업에 같은 실행 모델을 재사용합니다.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-blue" style="margin-top: 2rem;">
+        <p data-lang="en">
+          <strong>Resources:</strong>
+          <a href="https://github.com/tmdgusya/roach-pi/blob/main/docs/architecture/README.md" target="_blank">architecture note</a>
+          ·
+          <a href="https://github.com/tmdgusya/roach-pi/blob/main/docs/architecture/roach-pi-high-level.excalidraw" target="_blank">editable diagram source</a>
+          ·
+          <a href="https://excalidraw.com/#json=oVHGws8WgbCFib2A6ANW3,j-HgCZDcQrEwE93BQ_Gs0g" target="_blank">shareable Excalidraw view</a>
+        </p>
+        <p data-lang="ko">
+          <strong>리소스:</strong>
+          <a href="https://github.com/tmdgusya/roach-pi/blob/main/docs/architecture/README.md" target="_blank">아키텍처 노트</a>
+          ·
+          <a href="https://github.com/tmdgusya/roach-pi/blob/main/docs/architecture/roach-pi-high-level.excalidraw" target="_blank">편집 가능한 다이어그램 소스</a>
+          ·
+          <a href="https://excalidraw.com/#json=oVHGws8WgbCFib2A6ANW3,j-HgCZDcQrEwE93BQ_Gs0g" target="_blank">공유용 Excalidraw 뷰</a>
         </p>
       </div>
     </section>

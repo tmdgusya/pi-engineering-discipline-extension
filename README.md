@@ -168,6 +168,21 @@ The footer displays real-time metrics during every session:
 
 Everything the agent does is inspectable. No hidden behavior.
 
+## Architecture
+
+A high-level architecture diagram is available for the current extension suite:
+
+- Summary note: [`docs/architecture/README.md`](docs/architecture/README.md)
+- Editable diagram source: [`docs/architecture/roach-pi-high-level.excalidraw`](docs/architecture/roach-pi-high-level.excalidraw)
+- Shareable online view: https://excalidraw.com/#json=oVHGws8WgbCFib2A6ANW3,j-HgCZDcQrEwE93BQ_Gs0g
+
+The diagram focuses on the main runtime layers:
+- `pi` runtime as the host surface
+- `agentic-harness` as the orchestration core
+- `session-loop` as the recurring-job layer
+- `autonomous-dev` as the GitHub issue execution engine
+- spawned child `pi` processes as the shared execution primitive
+
 ## Development
 
 1. Clone the repository:
