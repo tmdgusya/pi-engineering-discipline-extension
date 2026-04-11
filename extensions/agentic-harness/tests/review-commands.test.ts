@@ -81,6 +81,19 @@ describe("Review Command (/review)", () => {
     expect(prompt).toContain('"feature/foo-bar_1.2"');
   });
 
+  it("should accept a full GitHub PR URL and pass it to gh pr diff", async () => {
+    const { mockPi, commands } = setupMockPi();
+    const review = commands.get("review");
+    const url = "https://github.com/tmdgusya/roach-pi/pull/27";
+    await review.handler(url, makeCtx());
+    expect(mockPi.sendUserMessage).toHaveBeenCalledTimes(1);
+    const prompt = mockPi.sendUserMessage.mock.calls[0][0];
+    expect(prompt).toContain(`"${url}"`);
+    expect(prompt).toContain(`gh pr diff ${url}`);
+    // The prompt should tell the LLM that a URL is a valid PR reference form
+    expect(prompt).toContain("PR URL");
+  });
+
   it("should reject shell metacharacters and notify error", async () => {
     const { mockPi, commands } = setupMockPi();
     const review = commands.get("review");

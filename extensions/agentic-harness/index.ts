@@ -759,11 +759,13 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // Review target argument must be a PR number or a git ref name. Restrict to a
-  // safe character set (alphanumerics, dot, dash, underscore, slash) so that the
-  // value cannot smuggle shell metacharacters into the downstream prompt's
-  // `gh pr diff ${topic}` / `git diff main...${topic}` templates.
-  const REVIEW_TOPIC_RE = /^[a-zA-Z0-9._/\-]+$/;
+  // Review target argument must be a PR number, a git ref name, or a PR URL.
+  // Restrict to a safe character set (alphanumerics, dot, dash, underscore,
+  // slash, colon) so that the value cannot smuggle shell metacharacters into
+  // the downstream prompt's `gh pr diff ${topic}` / `git diff main...${topic}`
+  // templates. Colon is safe (not a shell metacharacter) and is needed for the
+  // `https://` scheme in GitHub PR URLs.
+  const REVIEW_TOPIC_RE = /^[a-zA-Z0-9._/:\-]+$/;
 
   pi.registerCommand("review", {
     description:
@@ -772,7 +774,7 @@ export default function (pi: ExtensionAPI) {
       const topic = args?.trim() || "";
       if (topic && !REVIEW_TOPIC_RE.test(topic)) {
         ctx.ui.notify(
-          `Invalid review target: "${topic}". Only alphanumerics, dot, dash, underscore, and slash are allowed.`,
+          `Invalid review target: "${topic}". Expected a PR number (e.g. 27), a branch name (e.g. feature/foo), or a PR URL (e.g. https://github.com/owner/repo/pull/27). Only alphanumerics, dot, dash, underscore, slash, and colon are allowed.`,
           "error"
         );
         return;
@@ -783,7 +785,7 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.setStatus("harness", "Code review in progress...");
 
       const targetClause = topic
-        ? `Review target: "${topic}" (may be a PR number or branch name). If numeric, treat as a PR number and fetch the diff with \`gh pr diff ${topic}\`. If non-numeric, treat as a branch name and diff it against main with \`git diff main...${topic}\`.`
+        ? `Review target: "${topic}" (may be a PR number, a PR URL, or a branch name). If it is a number or contains "://" (a URL), treat it as a PR reference and fetch the diff with \`gh pr diff ${topic}\` — \`gh\` accepts PR numbers and full PR URLs interchangeably. Otherwise treat it as a branch name and diff it against main with \`git diff main...${topic}\`.`
         : `Review target: auto-detect. First run \`git rev-parse --abbrev-ref HEAD\` to get the current branch. Then run \`gh pr list --head <branch> --json number --jq '.[0].number'\` to check for a matching PR. If a PR exists, use \`gh pr diff <number>\`. Otherwise, combine \`git diff main...HEAD\` with uncommitted changes from \`git diff\` and \`git diff --cached\`.`;
 
       const prompt = [
@@ -814,7 +816,7 @@ export default function (pi: ExtensionAPI) {
       const topic = args?.trim() || "";
       if (topic && !REVIEW_TOPIC_RE.test(topic)) {
         ctx.ui.notify(
-          `Invalid review target: "${topic}". Only alphanumerics, dot, dash, underscore, and slash are allowed.`,
+          `Invalid review target: "${topic}". Expected a PR number (e.g. 27), a branch name (e.g. feature/foo), or a PR URL (e.g. https://github.com/owner/repo/pull/27). Only alphanumerics, dot, dash, underscore, slash, and colon are allowed.`,
           "error"
         );
         return;
@@ -831,7 +833,7 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.setStatus("harness", "Ultrareview pipeline in progress...");
 
       const targetClause = topic
-        ? `Review target: "${topic}" (may be a PR number or branch name). If numeric, treat as a PR number and fetch the diff with \`gh pr diff ${topic}\`. If non-numeric, treat as a branch name and diff it against main with \`git diff main...${topic}\`.`
+        ? `Review target: "${topic}" (may be a PR number, a PR URL, or a branch name). If it is a number or contains "://" (a URL), treat it as a PR reference and fetch the diff with \`gh pr diff ${topic}\` — \`gh\` accepts PR numbers and full PR URLs interchangeably. Otherwise treat it as a branch name and diff it against main with \`git diff main...${topic}\`.`
         : `Review target: auto-detect. First run \`git rev-parse --abbrev-ref HEAD\` to get the current branch. Then run \`gh pr list --head <branch> --json number --jq '.[0].number'\` to check for a matching PR. If a PR exists, use \`gh pr diff <number>\`. Otherwise, combine \`git diff main...HEAD\` with uncommitted changes from \`git diff\` and \`git diff --cached\`.`;
 
       const prompt = [
