@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.1](https://github.com/tmdgusya/roach-pi/compare/v1.7.0...v1.7.1) (2026-04-11)
+
+### Bug Fixes
+
+* **agentic-harness:** hide ask_user_question from subagents ([98b7a95](https://github.com/tmdgusya/roach-pi/commit/98b7a955ccc9e7743cbecb7240669ed61d68bf90))
+
 ## [1.7.0](https://github.com/tmdgusya/roach-pi/compare/v1.6.2...v1.7.0) (2026-04-11)
 
 ### Features
