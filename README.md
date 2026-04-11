@@ -35,6 +35,8 @@ pi install git:github.com/tmdgusya/pi-engineering-discipline-extension
 - **`/clarify`**: The agent asks dynamic, context-aware questions one at a time to resolve ambiguity. It generates questions and choices on the fly based on your request, while exploring the codebase via subagents in parallel. Ends with a structured Context Brief.
 - **`/plan`**: Delegates to the agent in strict agentic-plan-crafting mode, ensuring executable implementation plans with no placeholders.
 - **`/ultraplan`**: The agent dispatches all 5 reviewer perspectives (Feasibility, Architecture, Risk, Dependency, User Value) in parallel via the subagent tool, then synthesizes findings into a milestone DAG.
+- **`/review [target]`**: Single-pass code review of current changes across 5 dimensions (bugs, security, performance, test coverage, consistency). No subagents — the current agent reads the diff and produces an integrated review directly. Target is optional; if omitted, auto-detects PR or local diff vs `main`.
+- **`/ultrareview [target]`**: Deep 3-stage code review pipeline. Stage 1 dispatches 10 subagents in parallel (5 reviewer roles × 2 seeds). Stage 2 runs `reviewer-verifier` to dedupe findings and filter false positives. Stage 3 runs `review-synthesis` to produce the final structured report, saved to `docs/engineering-discipline/reviews/YYYY-MM-DD-<topic>-review.md` with a summary streamed to chat. Mirrors claude-code's `bughunter` pipeline locally (no cloud teleport).
 - **`/ask`**: Manual test command for the `ask_user_question` tool.
 - **`/reset-phase`**: Resets the workflow phase to idle.
 - **`/loop <interval> <prompt>`**: Schedule a recurring prompt at fixed intervals (`5s`, `10m`, `2h`, `1d`). Cron-style — fires on schedule regardless of execution state.
@@ -49,7 +51,7 @@ pi install git:github.com/tmdgusya/pi-engineering-discipline-extension
 - **`ask_user_question`**: The agent calls this autonomously whenever it encounters ambiguity — generating questions and choices dynamically based on context.
 - **`subagent`**: Delegates tasks to specialized agents running as separate `pi` processes. Supports three execution modes:
   - **Single**: One-off investigation or exploration tasks
-  - **Parallel**: Dispatch multiple independent agents concurrently (max 8 tasks, 4 concurrent)
+  - **Parallel**: Dispatch multiple independent agents concurrently (max 12 tasks, 10 concurrent)
   - **Chain**: Sequential pipeline where each step uses `{previous}` to reference prior output
 - **FFF-backed search overrides**:
   - **`find`** → FFF fuzzy file search with ranking and git-aware indexing
@@ -70,6 +72,48 @@ What it changes:
 Operational modes:
 - **`both`** — override tools and replace `@` file autocomplete suggestions
 - **`tools-only`** — override tools only, keep pi's default autocomplete
+
+### Code Review (`/review` and `/ultrareview`)
+
+Both commands accept the same three target forms. The target argument is validated against a safe-character allowlist (`a–z`, `A–Z`, `0–9`, `.`, `-`, `_`, `/`, `:`) before being interpolated into any shell command — shell metacharacters (`;`, `|`, `&`, `$`, backticks, quotes, whitespace, etc.) are rejected with a clear error.
+
+**Input forms:**
+
+```bash
+# No argument — auto-detect. If the current branch has an open PR,
+# uses `gh pr diff <number>`. Otherwise falls back to
+# `git diff main...HEAD` plus uncommitted changes.
+/review
+/ultrareview
+
+# PR number — fetched via `gh pr diff <number>`.
+/review 27
+/ultrareview 27
+
+# PR URL — the full GitHub URL works the same as a number, because
+# `gh pr diff` accepts both interchangeably.
+/review https://github.com/tmdgusya/roach-pi/pull/27
+/ultrareview https://github.com/tmdgusya/roach-pi/pull/27
+
+# Branch name — diffed against main with `git diff main...<branch>`.
+/review feature/add-auth-flow
+/ultrareview feature/add-auth-flow
+```
+
+**When to use which:**
+
+- **`/review`** — quick sanity check. No confirmation dialog, no file saved, a single integrated review is streamed to chat. Good for iterating on a PR before requesting a deeper pass.
+- **`/ultrareview`** — deep review. Asks for confirmation before dispatching 10 subagents (this takes several minutes). The final report is saved under `docs/engineering-discipline/reviews/` and a top-5 summary is streamed to chat. Use before merging non-trivial changes.
+
+**Rejected inputs:**
+
+```bash
+/review 27; rm -rf /            # rejected: contains `;` and whitespace
+/review "27"                    # rejected: contains double quotes
+/review $(whoami)               # rejected: contains `$` and `(`/`)`
+```
+
+These all produce an `Invalid review target` error notification and no prompt is dispatched. For `/ultrareview`, validation runs **before** the confirmation dialog so you are never asked to confirm a run that would fail.
 
 ### Session Loop
 
