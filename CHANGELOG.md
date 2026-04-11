@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.8.0](https://github.com/tmdgusya/roach-pi/compare/v1.7.2...v1.8.0) (2026-04-11)
+
+### Features
+
+* **agentic-harness:** add /review and /ultrareview commands ([869a22d](https://github.com/tmdgusya/roach-pi/commit/869a22dd3aa873b7eac71f25b68994c0bf3d031a))
+
+### Bug Fixes
+
+* **agentic-harness:** accept PR URLs in /review and /ultrareview target ([927e2ec](https://github.com/tmdgusya/roach-pi/commit/927e2ecd4bd1cb33f7c397ac717e100961efab1b))
+
+### Documentation
+
+* **readme:** document /review and /ultrareview commands ([c81cc13](https://github.com/tmdgusya/roach-pi/commit/c81cc13a09cc5233a801c2f944987e30e1ebede8))
+
 ## [1.7.2](https://github.com/tmdgusya/roach-pi/compare/v1.7.1...v1.7.2) (2026-04-11)
 
 ### Bug Fixes
