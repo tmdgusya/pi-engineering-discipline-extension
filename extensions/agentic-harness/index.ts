@@ -672,6 +672,17 @@ export default function (pi: ExtensionAPI) {
 
   const GOAL_DOC_PATTERN = /^docs\/engineering-discipline\/(context|plans|reviews)\//;
 
+  // Maps each non-idle phase to the regex for the directory whose fresh write signals phase completion.
+  // A write to the matching directory flips currentPhase back to "idle" so the workflow guidance stops
+  // riding on subsequent turns. Edits are ignored — only initial writes (new files) count as completion.
+  const PHASE_TERMINAL_DIR: Partial<Record<WorkflowPhase, RegExp>> = {
+    clarifying: /^docs\/engineering-discipline\/context\//,
+    planning: /^docs\/engineering-discipline\/plans\//,
+    ultraplanning: /^docs\/engineering-discipline\/plans\//,
+    reviewing: /^docs\/engineering-discipline\/reviews\//,
+    ultrareviewing: /^docs\/engineering-discipline\/reviews\//,
+  };
+
   pi.on("tool_result", async (event, _ctx) => {
     if (currentPhase === "idle") return;
 
@@ -682,9 +693,16 @@ export default function (pi: ExtensionAPI) {
     if (!filePath) return;
 
     const relativePath = filePath.replace(/^.*?docs\/engineering-discipline\//, "docs/engineering-discipline/");
-    if (GOAL_DOC_PATTERN.test(relativePath)) {
-      activeGoalDocument = relativePath;
-      updateState(STATE_FILE, { activeGoalDocument: relativePath }).catch(() => {});
+    if (!GOAL_DOC_PATTERN.test(relativePath)) return;
+
+    activeGoalDocument = relativePath;
+
+    // Auto-reset phase when the current phase's terminal artifact is written (not edited).
+    if (toolName === "write") {
+      const terminal = PHASE_TERMINAL_DIR[currentPhase];
+      if (terminal && terminal.test(relativePath)) {
+        currentPhase = "idle";
+      }
     }
   });
 

@@ -481,3 +481,105 @@ describe("webfetch Tool", () => {
     expect(schema.required).toContain("url");
   });
 });;
+
+describe("tool_result Phase Auto-Reset", () => {
+  it("should reset currentPhase to idle when the phase's terminal artifact is written", async () => {
+    const { mockPi, events, commands } = createMockPi();
+    extension(mockPi);
+
+    // Put root session into 'planning' phase via /plan.
+    const plan = commands.get("plan");
+    await plan.handler("test feature", {
+      ui: {
+        confirm: vi.fn().mockResolvedValue(true),
+        setStatus: vi.fn(),
+      },
+    } as any);
+
+    const beforeHandlers = events.get("before_agent_start")!;
+    const before = await beforeHandlers[0](
+      { type: "before_agent_start", prompt: "continue planning", systemPrompt: "base" },
+      { cwd: "." } as any
+    );
+    expect(before?.systemPrompt).toContain("Active Workflow: Plan Crafting");
+
+    // Simulate a write to the planning terminal directory.
+    const toolHandlers = events.get("tool_result")!;
+    await toolHandlers[0](
+      {
+        type: "tool_result",
+        toolName: "write",
+        input: { path: "docs/engineering-discipline/plans/2026-04-19-foo.md" },
+      } as any,
+      { cwd: "." } as any
+    );
+
+    // Next turn must no longer see phase guidance, because phase was reset to idle.
+    const after = await beforeHandlers[0](
+      { type: "before_agent_start", prompt: "anything", systemPrompt: "base" },
+      { cwd: "." } as any
+    );
+    expect(after?.systemPrompt).not.toContain("Active Workflow: Plan Crafting");
+  });
+
+  it("should NOT reset phase when a write targets a different phase's directory", async () => {
+    const { mockPi, events, commands } = createMockPi();
+    extension(mockPi);
+
+    const plan = commands.get("plan");
+    await plan.handler("test feature", {
+      ui: {
+        confirm: vi.fn().mockResolvedValue(true),
+        setStatus: vi.fn(),
+      },
+    } as any);
+
+    const toolHandlers = events.get("tool_result")!;
+    // Writing a review doc while in planning phase must NOT reset planning.
+    await toolHandlers[0](
+      {
+        type: "tool_result",
+        toolName: "write",
+        input: { path: "docs/engineering-discipline/reviews/2026-04-19-bar.md" },
+      } as any,
+      { cwd: "." } as any
+    );
+
+    const beforeHandlers = events.get("before_agent_start")!;
+    const after = await beforeHandlers[0](
+      { type: "before_agent_start", prompt: "anything", systemPrompt: "base" },
+      { cwd: "." } as any
+    );
+    expect(after?.systemPrompt).toContain("Active Workflow: Plan Crafting");
+  });
+
+  it("should NOT reset phase on edit — only on write (first creation)", async () => {
+    const { mockPi, events, commands } = createMockPi();
+    extension(mockPi);
+
+    const plan = commands.get("plan");
+    await plan.handler("test feature", {
+      ui: {
+        confirm: vi.fn().mockResolvedValue(true),
+        setStatus: vi.fn(),
+      },
+    } as any);
+
+    const toolHandlers = events.get("tool_result")!;
+    await toolHandlers[0](
+      {
+        type: "tool_result",
+        toolName: "edit",
+        input: { path: "docs/engineering-discipline/plans/2026-04-19-foo.md" },
+      } as any,
+      { cwd: "." } as any
+    );
+
+    const beforeHandlers = events.get("before_agent_start")!;
+    const after = await beforeHandlers[0](
+      { type: "before_agent_start", prompt: "anything", systemPrompt: "base" },
+      { cwd: "." } as any
+    );
+    expect(after?.systemPrompt).toContain("Active Workflow: Plan Crafting");
+  });
+});
