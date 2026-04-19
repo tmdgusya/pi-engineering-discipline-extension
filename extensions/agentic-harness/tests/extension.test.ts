@@ -583,3 +583,44 @@ describe("tool_result Phase Auto-Reset", () => {
     expect(after?.systemPrompt).toContain("Active Workflow: Plan Crafting");
   });
 });
+
+describe("No Global State File", () => {
+  it("extension must not import loadState/updateState from the state module", async () => {
+    // Source-level contract: the extension body is not allowed to reference the
+    // removed persistence helpers. This guards against accidental reintroduction.
+    const { readFile } = await import("fs/promises");
+    const src = await readFile(new URL("../index.ts", import.meta.url), "utf-8");
+    expect(src).not.toMatch(/\bloadState\s*\(/);
+    expect(src).not.toMatch(/\bupdateState\s*\(/);
+    expect(src).not.toMatch(/extension-state\.json/);
+  });
+
+  it("session_start must not read any state file — phase always starts idle on a fresh process", async () => {
+    const { mockPi, events } = createMockPi();
+    extension(mockPi);
+
+    const handlers = events.get("session_start");
+    if (!handlers || handlers.length === 0) return; // no-op if not registered
+
+    // Provide a ctx with the minimum surface the handler touches.
+    const headerSetters: any[] = [];
+    await handlers[0]({ type: "session_start" } as any, {
+      cwd: ".",
+      ui: {
+        setHeader: (fn: any) => headerSetters.push(fn),
+        setFooter: vi.fn(),
+        notify: vi.fn(),
+      },
+      model: { name: "test" },
+      getContextUsage: () => undefined,
+    } as any);
+
+    // Immediately after session_start, phase must be idle (no inheritance from disk).
+    const beforeHandlers = events.get("before_agent_start")!;
+    const result = await beforeHandlers[0](
+      { type: "before_agent_start", prompt: "hello", systemPrompt: "base" },
+      { cwd: "." } as any
+    );
+    expect(result?.systemPrompt).not.toContain("Active Workflow:");
+  });
+});

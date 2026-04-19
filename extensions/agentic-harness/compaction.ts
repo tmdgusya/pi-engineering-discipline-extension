@@ -1,5 +1,12 @@
-import type { ExtensionState } from "./state.js";
 import { PI_TOOL_NAME_SET } from "./pi-tools.js";
+
+export type CompactionPhase =
+  | "idle"
+  | "clarifying"
+  | "planning"
+  | "ultraplanning"
+  | "reviewing"
+  | "ultrareviewing";
 
 /** Tool results older than this are truncated during microcompaction (60 min) */
 export const MICROCOMPACT_AGE_MS = 60 * 60 * 1000;
@@ -45,7 +52,7 @@ const NO_TOOLS_TRAILER =
   "an <analysis> block followed by a <summary> block.";
 
 function getPhaseSection(
-  phase: ExtensionState["phase"],
+  phase: CompactionPhase,
   goalDoc: string | null,
 ): string {
   if (phase === "idle") return "";
@@ -106,7 +113,7 @@ The session is in /ultrareview mode. Your summary MUST emphasize:
 }
 
 export function getCompactionPrompt(
-  phase: ExtensionState["phase"],
+  phase: CompactionPhase,
   goalDoc: string | null,
   customInstructions?: string,
 ): string {

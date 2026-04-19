@@ -10,7 +10,6 @@ import { discoverAgents } from "./agents.js";
 import { runAgent, mapWithConcurrencyLimit, MAX_CONCURRENCY, MAX_PARALLEL_TASKS, resolveDepthConfig, getCycleViolations } from "./subagent.js";
 import { emptyUsage, isResultError, isResultSuccess, getResultSummaryText, getFinalOutput, type SingleResult, type SubagentDetails } from "./types.js";
 import { renderCall, renderResult } from "./render.js";
-import { loadState, updateState } from "./state.js";
 import { parsePlan } from "./plan-parser.js";
 import { buildValidatorPrompt } from "./validator-template.js";
 import { readFile, writeFile, mkdir } from "fs/promises";
@@ -31,8 +30,6 @@ type WorkflowPhase =
 
 let currentPhase: WorkflowPhase = "idle";
 let activeGoalDocument: string | null = null;
-
-const STATE_FILE = join(homedir(), ".pi", "extension-state.json");
 
 const cacheStats: CacheStats = { totalInput: 0, totalCacheRead: 0 };
 
@@ -719,7 +716,6 @@ export default function (pi: ExtensionAPI) {
 
       currentPhase = "clarifying";
       activeGoalDocument = null;
-      updateState(STATE_FILE, { phase: "clarifying", activeGoalDocument: null }).catch(() => {});
       ctx.ui.setStatus("harness", "Clarification in progress...");
 
       const prompt = topic
@@ -745,7 +741,6 @@ export default function (pi: ExtensionAPI) {
       if (!ok) return;
 
       currentPhase = "planning";
-      updateState(STATE_FILE, { phase: "planning" }).catch(() => {});
       ctx.ui.setStatus("harness", "Agentic planning workflow in progress...");
 
       const topic = args?.trim() || "";
@@ -772,7 +767,6 @@ export default function (pi: ExtensionAPI) {
       if (!confirmed) return;
 
       currentPhase = "ultraplanning";
-      updateState(STATE_FILE, { phase: "ultraplanning" }).catch(() => {});
       ctx.ui.setStatus("harness", "Agentic milestone workflow in progress...");
 
       const topic = args?.trim() || "";
@@ -807,7 +801,6 @@ export default function (pi: ExtensionAPI) {
 
       currentPhase = "reviewing";
       activeGoalDocument = null;
-      updateState(STATE_FILE, { phase: "reviewing", activeGoalDocument: null }).catch(() => {});
       ctx.ui.setStatus("harness", "Code review in progress...");
 
       const targetClause = topic
@@ -856,7 +849,6 @@ export default function (pi: ExtensionAPI) {
 
       currentPhase = "ultrareviewing";
       activeGoalDocument = null;
-      updateState(STATE_FILE, { phase: "ultrareviewing", activeGoalDocument: null }).catch(() => {});
       ctx.ui.setStatus("harness", "Ultrareview pipeline in progress...");
 
       const targetClause = topic
@@ -1004,7 +996,6 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       currentPhase = "idle";
       activeGoalDocument = null;
-      updateState(STATE_FILE, { phase: "idle", activeGoalDocument: null }).catch(() => {});
       ctx.ui.setStatus("harness", undefined);
       ctx.ui.notify("Workflow phase reset to idle.", "info");
     },
@@ -1030,9 +1021,8 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_start", async (_event, ctx) => {
-    const saved = await loadState(STATE_FILE);
-    currentPhase = saved.phase;
-    activeGoalDocument = saved.activeGoalDocument;
+    currentPhase = "idle";
+    activeGoalDocument = null;
 
     cacheStats.totalInput = 0;
     cacheStats.totalCacheRead = 0;
