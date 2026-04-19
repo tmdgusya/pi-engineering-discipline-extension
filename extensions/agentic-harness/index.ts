@@ -530,7 +530,7 @@ export default function (pi: ExtensionAPI) {
   };
 
   pi.on("before_agent_start", async (event, _ctx) => {
-    const guidance = PHASE_GUIDANCE[currentPhase];
+    const guidance = isRootSession ? PHASE_GUIDANCE[currentPhase] : "";
 
     let delegationInfo = "";
     if (depthConfig.canDelegate) {

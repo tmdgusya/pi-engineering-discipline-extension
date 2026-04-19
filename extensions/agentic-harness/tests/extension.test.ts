@@ -246,9 +246,11 @@ describe("before_agent_start Event", () => {
         { cwd: "." } as any
       );
 
-      expect(result?.systemPrompt).toContain("Active Workflow: Plan Crafting");
+      // Subagents never receive phase guidance (subagent guard). So the planning
+      // workflow text is suppressed entirely, and in particular ask_user_question
+      // guidance does not leak into subagent turns.
+      expect(result?.systemPrompt).not.toContain("Active Workflow: Plan Crafting");
       expect(result?.systemPrompt).not.toContain("ask_user_question");
-      expect(result?.systemPrompt).toContain("request root-session clarification");
     } finally {
       if (prevDepth === undefined) delete process.env.PI_SUBAGENT_DEPTH;
       else process.env.PI_SUBAGENT_DEPTH = prevDepth;
@@ -275,6 +277,34 @@ describe("before_agent_start Event", () => {
 
     expect(result?.systemPrompt).toContain("Active Workflow: Code Review (/review)");
     expect(result?.systemPrompt).toContain("Do NOT dispatch subagents");
+  });
+
+  it("should NOT inject phase guidance in subagent context, but should still inject delegation guards", async () => {
+    const prevDepth = process.env.PI_SUBAGENT_DEPTH;
+    process.env.PI_SUBAGENT_DEPTH = "1";
+    try {
+      const { mockPi, events, commands } = createMockPi();
+      extension(mockPi);
+
+      // Root would normally set phase via /plan; inside a subagent the /plan command is not registered,
+      // but we simulate the scenario where a subagent process inherits a phase from a (now-removed) global store.
+      // Because phase state is now in-memory-only and subagents start idle, this test also verifies the default
+      // behaviour: idle subagents never get phase guidance text.
+      const handlers = events.get("before_agent_start")!;
+      const result = await handlers[0](
+        { type: "before_agent_start", prompt: "do the task", systemPrompt: "base" },
+        { cwd: "." } as any
+      );
+
+      expect(result?.systemPrompt).toContain("base");
+      expect(result?.systemPrompt).not.toContain("Active Workflow:");
+      // Delegation guards depend on depthConfig.canDelegate. At depth=1 (< default max 3) delegation is still allowed,
+      // so the guards section still appears.
+      expect(result?.systemPrompt).toContain("## Delegation Guards");
+    } finally {
+      if (prevDepth === undefined) delete process.env.PI_SUBAGENT_DEPTH;
+      else process.env.PI_SUBAGENT_DEPTH = prevDepth;
+    }
   });
 });
 
