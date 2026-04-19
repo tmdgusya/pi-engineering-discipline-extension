@@ -695,10 +695,13 @@ export default function (pi: ExtensionAPI) {
     activeGoalDocument = relativePath;
 
     // Auto-reset phase when the current phase's terminal artifact is written (not edited).
+    // Clear activeGoalDocument too so this matches /reset-phase semantics — otherwise the
+    // session_before_compact early-return gate stays open with a stale goal-doc pointer.
     if (toolName === "write") {
       const terminal = PHASE_TERMINAL_DIR[currentPhase];
       if (terminal && terminal.test(relativePath)) {
         currentPhase = "idle";
+        activeGoalDocument = null;
       }
     }
   });

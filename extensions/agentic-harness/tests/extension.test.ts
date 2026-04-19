@@ -582,6 +582,63 @@ describe("tool_result Phase Auto-Reset", () => {
     );
     expect(after?.systemPrompt).toContain("Active Workflow: Plan Crafting");
   });
+
+  it("should also clear activeGoalDocument on auto-reset (symmetric with /reset-phase)", async () => {
+    const { mockPi, events, commands } = createMockPi();
+    extension(mockPi);
+
+    const plan = commands.get("plan");
+    await plan.handler("test feature", {
+      ui: {
+        confirm: vi.fn().mockResolvedValue(true),
+        setStatus: vi.fn(),
+      },
+    } as any);
+
+    // Fire the terminal-artifact write. Auto-reset must clear BOTH currentPhase
+    // AND activeGoalDocument; otherwise session_before_compact's early-return
+    // gate (`phase === "idle" && !activeGoalDocument`) stays open because the
+    // stale goal-doc pointer lingers, and custom compaction runs unnecessarily.
+    const toolHandlers = events.get("tool_result")!;
+    await toolHandlers[0](
+      {
+        type: "tool_result",
+        toolName: "write",
+        input: { path: "docs/engineering-discipline/plans/2026-04-19-foo.md" },
+      } as any,
+      { cwd: "." } as any
+    );
+
+    // Observable consequence: session_before_compact must short-circuit because
+    // both phase and goalDoc are cleared. If goalDoc lingered, the handler would
+    // fall through and call ctx.ui.notify with the "Custom compaction..." message.
+    const notify = vi.fn();
+    const compactBefore = events.get("session_before_compact")!;
+    const result = await compactBefore[0](
+      {
+        type: "session_before_compact",
+        preparation: {
+          messagesToSummarize: [{ role: "user", content: [], timestamp: 0 }],
+          turnPrefixMessages: [],
+          tokensBefore: 100,
+          firstKeptEntryId: "x",
+          previousSummary: null,
+        },
+        signal: new AbortController().signal,
+        customInstructions: undefined,
+      } as any,
+      {
+        ui: { notify },
+        model: { name: "test" },
+        modelRegistry: {
+          getApiKeyAndHeaders: vi.fn().mockResolvedValue({ ok: false }),
+        },
+      } as any
+    );
+
+    expect(result).toBeUndefined();
+    expect(notify).not.toHaveBeenCalled();
+  });
 });
 
 describe("No Global State File", () => {
