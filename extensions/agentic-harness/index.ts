@@ -655,6 +655,11 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_compact", async (event, _ctx) => {
+    // Mirror the before_agent_start subagent guard: subagents never inherit
+    // workflow phase state, even via compaction round-trips. Keeps phase
+    // strictly isolated to the root session.
+    if (!isRootSession) return;
+
     if (event.fromExtension && event.compactionEntry.details) {
       const details = event.compactionEntry.details as {
         phase?: string;

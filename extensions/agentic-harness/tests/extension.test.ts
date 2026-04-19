@@ -641,6 +641,66 @@ describe("tool_result Phase Auto-Reset", () => {
   });
 });
 
+describe("session_compact Subagent Guard", () => {
+  it("should NOT restore phase from compaction details in subagent context", async () => {
+    const prevDepth = process.env.PI_SUBAGENT_DEPTH;
+    process.env.PI_SUBAGENT_DEPTH = "1";
+    try {
+      const { mockPi, events } = createMockPi();
+      extension(mockPi);
+
+      // Simulate a session_compact event carrying non-idle phase state.
+      // Root-session behaviour would restore it; subagent must reject it.
+      const compactHandlers = events.get("session_compact")!;
+      await compactHandlers[0](
+        {
+          type: "session_compact",
+          fromExtension: true,
+          compactionEntry: {
+            details: {
+              phase: "ultraplanning",
+              activeGoalDocument: "docs/engineering-discipline/plans/x.md",
+            },
+          },
+        } as any,
+        { cwd: "." } as any
+      );
+
+      // If restore leaked, session_before_compact would fall past its early-return
+      // gate (phase !== "idle") and call ctx.ui.notify with the "Custom compaction..." message.
+      const notify = vi.fn();
+      const compactBefore = events.get("session_before_compact")!;
+      const result = await compactBefore[0](
+        {
+          type: "session_before_compact",
+          preparation: {
+            messagesToSummarize: [{ role: "user", content: [], timestamp: 0 }],
+            turnPrefixMessages: [],
+            tokensBefore: 100,
+            firstKeptEntryId: "x",
+            previousSummary: null,
+          },
+          signal: new AbortController().signal,
+          customInstructions: undefined,
+        } as any,
+        {
+          ui: { notify },
+          model: { name: "test" },
+          modelRegistry: {
+            getApiKeyAndHeaders: vi.fn().mockResolvedValue({ ok: false }),
+          },
+        } as any
+      );
+
+      expect(result).toBeUndefined();
+      expect(notify).not.toHaveBeenCalled();
+    } finally {
+      if (prevDepth === undefined) delete process.env.PI_SUBAGENT_DEPTH;
+      else process.env.PI_SUBAGENT_DEPTH = prevDepth;
+    }
+  });
+});
+
 describe("No Global State File", () => {
   it("extension must not import loadState/updateState from the state module", async () => {
     // Source-level contract: the extension body is not allowed to reference the
