@@ -48,6 +48,7 @@ export interface SandboxRuntimeOptions {
   enabled: boolean;
   workspaceRoot: string;
   networkMode: SandboxNetworkMode;
+  additionalWritableRoots?: string[];
   approvalMode?: SandboxApprovalMode;
   approvalResolver?: (request: ApprovalRequest) => Promise<ApprovalResult>;
   approvalStore?: ApprovalStore;

@@ -246,7 +246,10 @@ export default function (pi: ExtensionAPI) {
         const sandboxFor = (runCwd: string) => ({
           enabled: true,
           workspaceRoot: defaultCwd,
-          networkMode: "off" as const,
+          // Subagents must reach model/provider endpoints and update local
+          // session lock/state files under ~/.pi/agent.
+          networkMode: "on" as const,
+          additionalWritableRoots: [join(homedir(), ".pi", "agent")],
           approvalMode: parsedApprovalMode.mode,
           approvalResolver,
           approvalStore,

@@ -1,4 +1,5 @@
 import { spawnSync } from "child_process";
+import { existsSync } from "fs";
 import { resolve } from "path";
 import type { SandboxCapability, SandboxNetworkMode } from "../types.js";
 
@@ -28,6 +29,7 @@ export function buildLinuxSandboxLaunch(
   cwd: string,
   workspaceRoot: string,
   networkMode: SandboxNetworkMode,
+  additionalWritableRoots: string[] = [],
 ): LinuxSandboxLaunch {
   const resolvedWorkspace = resolve(workspaceRoot);
   const resolvedCwd = resolve(cwd);
@@ -45,6 +47,15 @@ export function buildLinuxSandboxLaunch(
     "--bind", resolvedWorkspace, resolvedWorkspace,
     "--chdir", resolvedCwd,
   ];
+
+  const extraRoots = Array.from(new Set(
+    additionalWritableRoots
+      .map((root) => resolve(root))
+      .filter((root) => root && root !== resolvedWorkspace && existsSync(root)),
+  ));
+  for (const root of extraRoots) {
+    bwrapArgs.push("--bind", root, root);
+  }
 
   if (networkMode === "off") bwrapArgs.push("--unshare-net");
 

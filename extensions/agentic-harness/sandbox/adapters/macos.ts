@@ -30,9 +30,12 @@ function escapeSbplPath(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
 }
 
-function buildProfile(workspaceRoot: string, networkMode: SandboxNetworkMode): string {
+function buildProfile(workspaceRoot: string, networkMode: SandboxNetworkMode, additionalWritableRoots: string[]): string {
   const escapedWorkspace = escapeSbplPath(resolve(workspaceRoot));
   const escapedTmp = escapeSbplPath(tmpdir());
+  const escapedWritableRoots = additionalWritableRoots
+    .map((root) => escapeSbplPath(resolve(root)))
+    .filter((root) => root.length > 0);
   const lines = [
     "(version 1)",
     "(deny default)",
@@ -44,6 +47,7 @@ function buildProfile(workspaceRoot: string, networkMode: SandboxNetworkMode): s
     `  (subpath \"${escapedWorkspace}\")`,
     "  (subpath \"/tmp\")",
     `  (subpath \"${escapedTmp}\")`,
+    ...escapedWritableRoots.map((root) => `  (subpath \"${root}\")`),
     ")",
   ];
   if (networkMode === "on") lines.push("(allow network*)");
@@ -55,9 +59,10 @@ export async function buildMacSandboxLaunch(
   args: string[],
   workspaceRoot: string,
   networkMode: SandboxNetworkMode,
+  additionalWritableRoots: string[] = [],
 ): Promise<MacSandboxLaunch> {
   const profilePath = join(tmpdir(), `pi-sandbox-${randomBytes(8).toString("hex")}.sb`);
-  await writeFile(profilePath, buildProfile(workspaceRoot, networkMode), "utf-8");
+  await writeFile(profilePath, buildProfile(workspaceRoot, networkMode, additionalWritableRoots), "utf-8");
   return {
     command: "sandbox-exec",
     args: ["-f", profilePath, command, ...args],

@@ -66,6 +66,7 @@ export async function resolveSandboxLaunch(opts: ResolveSandboxLaunchOptions): P
   }
 
   const workspaceRoot = sandbox.workspaceRoot || cwd;
+  const additionalWritableRoots = sandbox.additionalWritableRoots || [];
   const networkMode = sandbox.networkMode || "off";
   const fsMode = "workspace-write";
 
@@ -83,11 +84,11 @@ export async function resolveSandboxLaunch(opts: ResolveSandboxLaunchOptions): P
 
   if (decision.mode === "sandboxed") {
     if (platform === "linux") {
-      const launch = buildLinuxSandboxLaunch(command, args, cwd, workspaceRoot, networkMode);
+      const launch = buildLinuxSandboxLaunch(command, args, cwd, workspaceRoot, networkMode, additionalWritableRoots);
       return { command: launch.command, args: launch.args, env, applied: true };
     }
     if (platform === "darwin") {
-      const launch = await buildMacSandboxLaunch(command, args, workspaceRoot, networkMode);
+      const launch = await buildMacSandboxLaunch(command, args, workspaceRoot, networkMode, additionalWritableRoots);
       return { command: launch.command, args: launch.args, env, applied: true, cleanup: launch.cleanup };
     }
   }
