@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.9.0](https://github.com/tmdgusya/roach-pi/compare/v1.8.2...v1.9.0) (2026-04-20)
+
+### Features
+
+* **agentic-harness:** add sandbox approval modes and sensitive env guard ([2e5d8cd](https://github.com/tmdgusya/roach-pi/commit/2e5d8cd5ed2f8106bc2613209f4916baf115b248))
+
 ## [1.8.2](https://github.com/tmdgusya/roach-pi/compare/v1.8.1...v1.8.2) (2026-04-19)
 
 ### Bug Fixes
