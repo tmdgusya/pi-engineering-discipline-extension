@@ -1,10 +1,10 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { keyHint, keyText, rawKeyHint } from "@mariozechner/pi-coding-agent";
+import { createBashTool, isToolCallEventType, keyHint, keyText, rawKeyHint } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { RoachFooter, type CacheStats, type ActiveTools } from "./footer.js";
 import { homedir } from "os";
-import { join, dirname } from "path";
+import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { discoverAgents } from "./agents.js";
 import { runAgent, mapWithConcurrencyLimit, MAX_CONCURRENCY, MAX_PARALLEL_TASKS, resolveDepthConfig, getCycleViolations } from "./subagent.js";
@@ -19,6 +19,10 @@ import { complete } from "@mariozechner/pi-ai";
 import { isDisciplineAgent, augmentAgentWithKarpathy, getSlopCleanerTask } from "./discipline.js";
 import { fetchUrlToMarkdown } from "./webfetch/utils.js";
 import { renderWebfetchCall, renderWebfetchResult } from "./webfetch/render.js";
+import { getDefaultApprovalStore } from "./sandbox/approval-store.js";
+import { parseSandboxApprovalMode } from "./sandbox/approval-mode.js";
+import { createSandboxedBashOperations } from "./sandbox/bash-operations.js";
+import { isSensitiveEnvPath } from "./sandbox/sensitive-env.js";
 
 type WorkflowPhase =
   | "idle"
@@ -44,6 +48,29 @@ export default function (pi: ExtensionAPI) {
 
   const depthConfig = resolveDepthConfig();
   const isRootSession = depthConfig.currentDepth === 0;
+  const parsedApprovalMode = parseSandboxApprovalMode(process.env.PI_SANDBOX_APPROVAL_MODE);
+  let warnedInvalidApprovalMode = false;
+  let announcedAlwaysApprovalMode = false;
+  const approvalStore = getDefaultApprovalStore();
+
+  if (isRootSession) {
+    const rootSandbox = {
+      enabled: true,
+      workspaceRoot: process.cwd(),
+      networkMode: "off" as const,
+      approvalMode: parsedApprovalMode.mode,
+      approvalResolver: async () => ({ approved: false }),
+    };
+    const sandboxedBashOperations = createSandboxedBashOperations(rootSandbox);
+    const localBash = createBashTool(process.cwd(), { operations: sandboxedBashOperations });
+    pi.registerTool({
+      ...localBash,
+      label: "bash (sandboxed)",
+    });
+    pi.on("user_bash", () => ({
+      operations: sandboxedBashOperations,
+    }));
+  }
 
   const AskUserQuestionParams = Type.Object({
     question: Type.String({
@@ -181,9 +208,49 @@ export default function (pi: ExtensionAPI) {
 
       execute: async (toolCallId, params, signal, onUpdate, ctx) => {
         const { agent, task, tasks, chain, agentScope, cwd } = params;
+        const hasUI = (ctx as any).hasUI !== false && !!ctx?.ui?.select;
+        if (parsedApprovalMode.invalidRawValue && !warnedInvalidApprovalMode) {
+          warnedInvalidApprovalMode = true;
+          const message = `[agentic-harness] Invalid PI_SANDBOX_APPROVAL_MODE="${parsedApprovalMode.invalidRawValue}". Falling back to "ask".`;
+          if (hasUI && ctx?.ui?.notify) ctx.ui.notify(message, "warning");
+          else console.warn(message);
+        }
+        if (parsedApprovalMode.mode === "always" && !announcedAlwaysApprovalMode) {
+          announcedAlwaysApprovalMode = true;
+          const message = "[agentic-harness] Sandbox approval mode is \"always\" (YOLO). Unsandboxed fallback approvals are auto-allowed.";
+          if (hasUI && ctx?.ui?.notify) ctx.ui.notify(message, "warning");
+          else console.warn(message);
+        }
         const defaultCwd = ctx.cwd;
         const agents = await discoverAgents(defaultCwd, agentScope || "user", BUNDLED_AGENTS_DIR);
         const findAgent = (name: string) => agents.find((a) => a.name === name);
+        const approvalResolver = async (request: { reason: string; command: string; args: string[]; cwd: string }) => {
+          if (parsedApprovalMode.mode === "always") return { approved: true, scope: "session" as const };
+          if (parsedApprovalMode.mode === "deny") return { approved: false };
+          if (!hasUI) return { approved: false };
+          const message = [
+            "Sandbox escalation required to run unsandboxed.",
+            `Reason: ${request.reason}`,
+            `Command: ${request.command} ${request.args.join(" ")}`.trim(),
+          ].join("\n");
+          const choice = await ctx.ui.select(
+            message,
+            ["Deny", "Allow once", "Allow for session", "Always allow"],
+            { signal },
+          );
+          if (choice === "Allow once") return { approved: true, scope: "once" as const };
+          if (choice === "Allow for session") return { approved: true, scope: "session" as const };
+          if (choice === "Always allow") return { approved: true, scope: "always" as const };
+          return { approved: false };
+        };
+        const sandboxFor = (runCwd: string) => ({
+          enabled: true,
+          workspaceRoot: defaultCwd,
+          networkMode: "off" as const,
+          approvalMode: parsedApprovalMode.mode,
+          approvalResolver,
+          approvalStore,
+        });
 
         // Safety: cycle detection
         if (depthConfig.preventCycles) {
@@ -219,6 +286,7 @@ export default function (pi: ExtensionAPI) {
               depthConfig,
               signal,
               onUpdate,
+              sandbox: sandboxFor(step.cwd || defaultCwd),
               makeDetails: makeDetails("single"),
             });
             allResults.push(result);
@@ -284,6 +352,7 @@ export default function (pi: ExtensionAPI) {
                 cwd: t.cwd || defaultCwd,
                 depthConfig,
                 signal,
+                sandbox: sandboxFor(t.cwd || defaultCwd),
                 onUpdate: (partial) => {
                   if (partial.details?.results[0]) {
                     allResults[index] = partial.details.results[0];
@@ -337,6 +406,7 @@ export default function (pi: ExtensionAPI) {
             cwd: cwd || defaultCwd,
             depthConfig,
             signal,
+            sandbox: sandboxFor(cwd || defaultCwd),
             onUpdate,
             makeDetails: makeDetails("single"),
           });
@@ -351,6 +421,7 @@ export default function (pi: ExtensionAPI) {
                 cwd: cwd || defaultCwd,
                 depthConfig,
                 signal,
+                sandbox: sandboxFor(cwd || defaultCwd),
                 onUpdate,
                 makeDetails: makeDetails("single"),
               });
@@ -709,6 +780,57 @@ export default function (pi: ExtensionAPI) {
         activeGoalDocument = null;
       }
     }
+  });
+
+  pi.on("tool_call", async (event, ctx) => {
+    if (!isToolCallEventType("read", event)) return;
+    const inputPath = event.input?.path;
+    if (!inputPath || typeof inputPath !== "string") return;
+    if (!isSensitiveEnvPath(inputPath, ctx.cwd)) return;
+    if (parsedApprovalMode.mode === "always") return;
+    if (parsedApprovalMode.mode === "deny") {
+      return {
+        block: true,
+        reason: "Sensitive .env* reads are blocked by PI_SANDBOX_APPROVAL_MODE=deny.",
+      };
+    }
+
+    const cwd = ctx.cwd || process.cwd();
+    const resolved = resolve(cwd, inputPath);
+    const approvalKey = `sensitive-env-read:${resolved}`;
+    const cached = approvalStore.getApprovedScope(approvalKey);
+    if (cached === "session" || cached === "always") return;
+
+    const hasUI = (ctx as any).hasUI !== false && !!ctx?.ui?.select;
+    if (!hasUI) {
+      return {
+        block: true,
+        reason: "Sensitive .env* reads require interactive approval in ask mode.",
+      };
+    }
+
+    const choice = await ctx.ui.select(
+      [
+        "Sensitive .env* read requested.",
+        `Path: ${resolved}`,
+        "Allow this read?",
+      ].join("\n"),
+      ["Deny", "Allow once", "Allow for session", "Always allow"],
+    );
+
+    if (choice === "Allow once") return;
+    if (choice === "Allow for session") {
+      await approvalStore.setApprovedScope(approvalKey, "session");
+      return;
+    }
+    if (choice === "Always allow") {
+      await approvalStore.setApprovedScope(approvalKey, "always");
+      return;
+    }
+    return {
+      block: true,
+      reason: "Sensitive .env* read denied by user approval.",
+    };
   });
 
   pi.registerCommand("clarify", {
