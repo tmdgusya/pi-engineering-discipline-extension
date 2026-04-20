@@ -22,6 +22,7 @@ import { renderWebfetchCall, renderWebfetchResult } from "./webfetch/render.js";
 import { getDefaultApprovalStore } from "./sandbox/approval-store.js";
 import { parseSandboxApprovalMode } from "./sandbox/approval-mode.js";
 import { createSandboxedBashOperations } from "./sandbox/bash-operations.js";
+import { makePolicyFingerprint } from "./sandbox/policy-engine.js";
 import { isSensitiveEnvPath } from "./sandbox/sensitive-env.js";
 
 type WorkflowPhase =
@@ -820,6 +821,62 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("tool_call", async (event, ctx) => {
+    const hasUI = (ctx as any).hasUI !== false && !!ctx?.ui?.select;
+
+    if (isToolCallEventType("bash", event)) {
+      if (parsedApprovalMode.mode === "always") return;
+      if (parsedApprovalMode.mode === "deny") {
+        return {
+          block: true,
+          reason: "Bash command execution is blocked by PI_SANDBOX_APPROVAL_MODE=deny.",
+        };
+      }
+
+      const command = typeof event.input?.command === "string" ? event.input.command : "";
+      const cwd = ctx.cwd || process.cwd();
+      const policyFingerprint = makePolicyFingerprint({
+        platform: process.platform,
+        cwd,
+        workspaceRoot: process.cwd(),
+        fsMode: "workspace-write",
+        networkMode: "on",
+      });
+      const fallbackReason = "Policy requires explicit approval before command execution.";
+      const approvalKey = `${policyFingerprint}:${fallbackReason}`;
+      const cached = approvalStore.getApprovedScope(approvalKey);
+      if (cached === "session" || cached === "always") return;
+
+      if (!hasUI) {
+        return {
+          block: true,
+          reason: "Bash commands require interactive approval in ask mode.",
+        };
+      }
+
+      const choice = await ctx.ui.select(
+        [
+          "Bash command execution requested.",
+          `Command: ${command || "(empty)"}`,
+          "Allow this command?",
+        ].join("\n"),
+        ["Deny", "Allow once", "Allow for session", "Always allow"],
+      );
+
+      if (choice === "Allow once") return;
+      if (choice === "Allow for session") {
+        await approvalStore.setApprovedScope(approvalKey, "session");
+        return;
+      }
+      if (choice === "Always allow") {
+        await approvalStore.setApprovedScope(approvalKey, "always");
+        return;
+      }
+      return {
+        block: true,
+        reason: "Bash command denied by user approval.",
+      };
+    }
+
     if (!isToolCallEventType("read", event)) return;
     const inputPath = event.input?.path;
     if (!inputPath || typeof inputPath !== "string") return;
@@ -838,7 +895,6 @@ export default function (pi: ExtensionAPI) {
     const cached = approvalStore.getApprovedScope(approvalKey);
     if (cached === "session" || cached === "always") return;
 
-    const hasUI = (ctx as any).hasUI !== false && !!ctx?.ui?.select;
     if (!hasUI) {
       return {
         block: true,
