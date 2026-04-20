@@ -1,6 +1,6 @@
 {
   "name": "pi-agentic-harness",
-  "version": "1.9.1",
+  "version": "1.9.2",
   "description": "Agentic harness commands for clarification, planning, and ultraplan.",
   "type": "module",
   "scripts": {

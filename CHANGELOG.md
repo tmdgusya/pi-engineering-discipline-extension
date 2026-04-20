@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.9.2](https://github.com/tmdgusya/roach-pi/compare/v1.9.1...v1.9.2) (2026-04-20)
+
+### Bug Fixes
+
+* **agentic-harness:** allow root sandbox access to PI agent dir ([4077339](https://github.com/tmdgusya/roach-pi/commit/407733907f9c5485f8e073d60b66be58aaa0d615))
+
 ## [1.9.1](https://github.com/tmdgusya/roach-pi/compare/v1.9.0...v1.9.1) (2026-04-20)
 
 ### Bug Fixes
