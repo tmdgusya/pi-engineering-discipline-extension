@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.9.1](https://github.com/tmdgusya/roach-pi/compare/v1.9.0...v1.9.1) (2026-04-20)
+
+### Bug Fixes
+
+* remove missing hud extension entry ([d5c0032](https://github.com/tmdgusya/roach-pi/commit/d5c0032cdb09a2743091cdf6b6c88b93f15c47a2))
+
 ## [1.9.0](https://github.com/tmdgusya/roach-pi/compare/v1.8.2...v1.9.0) (2026-04-20)
 
 ### Features
