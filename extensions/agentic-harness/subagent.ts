@@ -10,6 +10,9 @@ import type { SingleResult, SubagentDetails } from "./types.js";
 import { emptyUsage, getFinalOutput } from "./types.js";
 import { processPiJsonLine } from "./runner-events.js";
 import { getInheritedCliArgs } from "./runner-cli.js";
+import { getDefaultApprovalStore } from "./sandbox/approval-store.js";
+import { resolveSandboxLaunch } from "./sandbox/executor.js";
+import type { SandboxRuntimeOptions } from "./sandbox/types.js";
 
 export const MAX_PARALLEL_TASKS = 12;
 export const MAX_CONCURRENCY = 10;
@@ -199,6 +202,7 @@ export interface RunAgentOptions {
   onUpdate?: OnUpdateCallback;
   onLifecycleEvent?: (event: RunLifecycleEvent) => void;
   makeDetails: (results: SingleResult[]) => SubagentDetails;
+  sandbox?: Omit<SandboxRuntimeOptions, "approvalStore"> & { approvalStore?: SandboxRuntimeOptions["approvalStore"] };
 }
 
 function generateRunId(): string {
@@ -242,6 +246,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
     onUpdate,
     onLifecycleEvent,
     makeDetails,
+    sandbox,
   } = opts;
 
   if (!agent) {
@@ -278,6 +283,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
 
   const invocation = getPiInvocation();
   let tmpPromptPath: string | undefined;
+  let sandboxCleanup: (() => Promise<void>) | undefined;
 
   try {
     if (agent.systemPrompt?.trim()) {
@@ -291,6 +297,32 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
     const propagatedStack = [...depthConfig.ancestorStack, agentName];
     const resolvedOwnership = resolveRunOwnership(ownership, agentName);
     const processLogPath = extraEnv?.[SUBAGENT_PROCESS_LOG_ENV] || process.env[SUBAGENT_PROCESS_LOG_ENV];
+    const effectiveEnv: Record<string, string | undefined> = {
+      ...process.env,
+      ...extraEnv,
+      [SUBAGENT_DEPTH_ENV]: String(nextDepth),
+      [SUBAGENT_MAX_DEPTH_ENV]: String(depthConfig.maxDepth),
+      [SUBAGENT_STACK_ENV]: JSON.stringify(propagatedStack),
+      [SUBAGENT_PREVENT_CYCLES_ENV]: depthConfig.preventCycles ? "1" : "0",
+      [SUBAGENT_RUN_ID_ENV]: resolvedOwnership.runId,
+      [SUBAGENT_PARENT_RUN_ID_ENV]: resolvedOwnership.parentRunId,
+      [SUBAGENT_ROOT_RUN_ID_ENV]: resolvedOwnership.rootRunId,
+      [SUBAGENT_OWNER_ENV]: resolvedOwnership.owner,
+    };
+    const resolvedSandbox = await resolveSandboxLaunch({
+      command: invocation.command,
+      args: allArgs,
+      cwd,
+      env: effectiveEnv,
+      platform: process.platform,
+      sandbox: sandbox?.enabled
+        ? {
+          ...sandbox,
+          approvalStore: sandbox.approvalStore || getDefaultApprovalStore(),
+        }
+        : undefined,
+    });
+    sandboxCleanup = resolvedSandbox.cleanup;
 
     let wasAborted = false;
     let semanticTerminationRequested = false;
@@ -298,23 +330,12 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
     const lifecycleWrites: Promise<void>[] = [];
 
     const exitCode = await new Promise<number>((resolve) => {
-      const proc = spawn(invocation.command, allArgs, {
+      const proc = spawn(resolvedSandbox.command, resolvedSandbox.args, {
         cwd,
         shell: false,
         detached: process.platform !== "win32",
         stdio: ["pipe", "pipe", "pipe"],
-        env: {
-          ...process.env,
-          ...extraEnv,
-          [SUBAGENT_DEPTH_ENV]: String(nextDepth),
-          [SUBAGENT_MAX_DEPTH_ENV]: String(depthConfig.maxDepth),
-          [SUBAGENT_STACK_ENV]: JSON.stringify(propagatedStack),
-          [SUBAGENT_PREVENT_CYCLES_ENV]: depthConfig.preventCycles ? "1" : "0",
-          [SUBAGENT_RUN_ID_ENV]: resolvedOwnership.runId,
-          [SUBAGENT_PARENT_RUN_ID_ENV]: resolvedOwnership.parentRunId,
-          [SUBAGENT_ROOT_RUN_ID_ENV]: resolvedOwnership.rootRunId,
-          [SUBAGENT_OWNER_ENV]: resolvedOwnership.owner,
-        },
+        env: resolvedSandbox.env,
       });
 
       const pid = proc.pid ?? 0;
@@ -534,5 +555,6 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
     return result;
   } finally {
     if (tmpPromptPath) await unlink(tmpPromptPath).catch(() => {});
+    await sandboxCleanup?.().catch(() => undefined);
   }
 }

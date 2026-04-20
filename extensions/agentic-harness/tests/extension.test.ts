@@ -102,6 +102,92 @@ describe("Extension Registration", () => {
     expect(events.has("session_before_compact")).toBe(true);
     expect(events.has("session_compact")).toBe(true);
     expect(events.has("tool_result")).toBe(true);
+    expect(events.has("tool_call")).toBe(true);
+    expect(events.has("user_bash")).toBe(true);
+  });
+});
+
+describe(".env read guard", () => {
+  it("asks approval for .env reads in ask mode and allows once", async () => {
+    const prevMode = process.env.PI_SANDBOX_APPROVAL_MODE;
+    delete process.env.PI_SANDBOX_APPROVAL_MODE;
+    try {
+      const { mockPi, events } = createMockPi();
+      extension(mockPi);
+      const handler = events.get("tool_call")?.[0];
+      expect(handler).toBeDefined();
+      const select = vi.fn().mockResolvedValue("Allow once");
+      const result = await handler(
+        { type: "tool_call", toolName: "read", input: { path: ".env" } },
+        { cwd: "/repo", hasUI: true, ui: { select } },
+      );
+      expect(select).toHaveBeenCalled();
+      expect(result).toBeUndefined();
+    } finally {
+      if (prevMode === undefined) delete process.env.PI_SANDBOX_APPROVAL_MODE;
+      else process.env.PI_SANDBOX_APPROVAL_MODE = prevMode;
+    }
+  });
+
+  it("blocks .env reads in ask mode when UI is unavailable", async () => {
+    const prevMode = process.env.PI_SANDBOX_APPROVAL_MODE;
+    delete process.env.PI_SANDBOX_APPROVAL_MODE;
+    try {
+      const { mockPi, events } = createMockPi();
+      extension(mockPi);
+      const handler = events.get("tool_call")?.[0];
+      expect(handler).toBeDefined();
+      const result = await handler(
+        { type: "tool_call", toolName: "read", input: { path: ".env" } },
+        { cwd: "/repo", hasUI: false, ui: {} },
+      );
+      expect(result?.block).toBe(true);
+      expect(result?.reason).toContain("interactive approval");
+    } finally {
+      if (prevMode === undefined) delete process.env.PI_SANDBOX_APPROVAL_MODE;
+      else process.env.PI_SANDBOX_APPROVAL_MODE = prevMode;
+    }
+  });
+
+  it("does not block read tool calls for .env paths in yolo mode", async () => {
+    const prevMode = process.env.PI_SANDBOX_APPROVAL_MODE;
+    process.env.PI_SANDBOX_APPROVAL_MODE = "always";
+    try {
+      const { mockPi, events } = createMockPi();
+      extension(mockPi);
+      const handler = events.get("tool_call")?.[0];
+      expect(handler).toBeDefined();
+      const result = await handler(
+        { type: "tool_call", toolName: "read", input: { path: ".env" } },
+        { cwd: "/repo", hasUI: false, ui: {} },
+      );
+      expect(result).toBeUndefined();
+    } finally {
+      if (prevMode === undefined) delete process.env.PI_SANDBOX_APPROVAL_MODE;
+      else process.env.PI_SANDBOX_APPROVAL_MODE = prevMode;
+    }
+  });
+
+  it("blocks .env reads in deny mode without prompt", async () => {
+    const prevMode = process.env.PI_SANDBOX_APPROVAL_MODE;
+    process.env.PI_SANDBOX_APPROVAL_MODE = "deny";
+    try {
+      const { mockPi, events } = createMockPi();
+      extension(mockPi);
+      const handler = events.get("tool_call")?.[0];
+      expect(handler).toBeDefined();
+      const select = vi.fn();
+      const result = await handler(
+        { type: "tool_call", toolName: "read", input: { path: ".env" } },
+        { cwd: "/repo", hasUI: true, ui: { select } },
+      );
+      expect(select).not.toHaveBeenCalled();
+      expect(result?.block).toBe(true);
+      expect(result?.reason).toContain("PI_SANDBOX_APPROVAL_MODE=deny");
+    } finally {
+      if (prevMode === undefined) delete process.env.PI_SANDBOX_APPROVAL_MODE;
+      else process.env.PI_SANDBOX_APPROVAL_MODE = prevMode;
+    }
   });
 });
 
