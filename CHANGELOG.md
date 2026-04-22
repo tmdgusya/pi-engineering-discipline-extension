@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.9.5](https://github.com/tmdgusya/roach-pi/compare/v1.9.4...v1.9.5) (2026-04-22)
+
+### Bug Fixes
+
+* **fff:** pin @ff-labs/fff-node to 0.6.2-nightly.acd2f0c ([4470b66](https://github.com/tmdgusya/roach-pi/commit/4470b66929ed9c5e56fa2bc00e7197344cb18c58)), closes [dmtrKovalenko/fff.nvim#393](https://github.com/dmtrKovalenko/fff.nvim/issues/393)
+
+### Miscellaneous
+
+* upgrade @ff-labs/fff-node 0.5.2 → 0.6.0 ([3b1ea47](https://github.com/tmdgusya/roach-pi/commit/3b1ea47c02046e3e761356b42194253086703717))
+
 ## [1.9.4](https://github.com/tmdgusya/roach-pi/compare/v1.9.3...v1.9.4) (2026-04-20)
 
 ### Bug Fixes
