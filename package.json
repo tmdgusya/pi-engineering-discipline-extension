@@ -12,7 +12,8 @@
       "extensions/agentic-harness/index.ts",
       "extensions/session-loop/index.ts",
       "extensions/autonomous-dev/index.ts",
-      "extensions/fff-search/index.ts"
+      "extensions/fff-search/index.ts",
+      "extensions/workspace-memory/index.ts"
     ]
   },
   "dependencies": {
