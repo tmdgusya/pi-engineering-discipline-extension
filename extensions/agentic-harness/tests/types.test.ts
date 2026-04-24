@@ -7,6 +7,8 @@ import {
   isResultError,
   getDisplayItems,
   getFinalOutput,
+  getResultSummaryText,
+  truncateForModel,
   type SingleResult,
   type UsageStats,
 } from "../types.js";
@@ -99,6 +101,26 @@ describe("getDisplayItems", () => {
 
   it("should return empty array for no messages", () => {
     expect(getDisplayItems([])).toEqual([]);
+  });
+});
+
+describe("truncateForModel / getResultSummaryText", () => {
+  it("should leave short output unchanged", () => {
+    expect(truncateForModel("short", 10)).toEqual({ text: "short" });
+  });
+
+  it("should truncate long model-facing output with metadata", () => {
+    const result = truncateForModel("a".repeat(100), 50);
+    expect(result.text.length).toBeLessThanOrEqual(50);
+    expect(result.text).toContain("[truncated: 100 -> 50 chars]");
+    expect(result.metadata).toMatchObject({ truncated: true, originalLength: 100, maxOutput: 50 });
+  });
+
+  it("should attach truncation metadata to result summaries", () => {
+    const r = makeResult({ messages: [{ role: "assistant", content: [{ type: "text", text: "x".repeat(120) }] }] });
+    const text = getResultSummaryText(r, 60);
+    expect(text).toContain("[truncated: 120 -> 60 chars]");
+    expect(r.outputTruncation?.originalLength).toBe(120);
   });
 });
 

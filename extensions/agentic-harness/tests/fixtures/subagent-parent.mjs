@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -7,7 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const grandchildScript = join(__dirname, "subagent-grandchild.mjs");
 const stateFile = process.env.FIXTURE_STATE_FILE;
 const taskArg = process.argv.find((arg) => arg.startsWith("Task: ")) || "Task: success-hang";
-const mode = taskArg.replace(/^Task:\s*/, "").trim();
+const mode = taskArg.replace(/^Task:\s*/, "").trim().split(/\s+/)[0];
 
 function updateState(patch) {
   if (!stateFile) return;
@@ -28,10 +28,15 @@ grandchild.unref();
 updateState({
   parentPid: process.pid,
   mode,
+  argv: process.argv.slice(2),
   runId: process.env.PI_SUBAGENT_RUN_ID,
   parentRunId: process.env.PI_SUBAGENT_PARENT_RUN_ID,
   rootRunId: process.env.PI_SUBAGENT_ROOT_RUN_ID,
   owner: process.env.PI_SUBAGENT_OWNER,
+  contextMode: process.env.PI_SUBAGENT_CONTEXT_MODE,
+  artifactDir: process.env.PI_SUBAGENT_ARTIFACT_DIR,
+  outputFile: process.env.PI_SUBAGENT_OUTPUT_FILE,
+  progressFile: process.env.PI_SUBAGENT_PROGRESS_FILE,
   grandchildPid: grandchild.pid,
 });
 
@@ -41,6 +46,13 @@ const assistantMessage = {
 };
 
 console.log(JSON.stringify({ type: "message_end", message: assistantMessage }));
+if (mode === "write-output" && process.env.PI_SUBAGENT_OUTPUT_FILE) {
+  mkdirSync(dirname(process.env.PI_SUBAGENT_OUTPUT_FILE), { recursive: true });
+  writeFileSync(process.env.PI_SUBAGENT_OUTPUT_FILE, "artifact final answer", "utf8");
+  console.log(JSON.stringify({ type: "agent_end", messages: [assistantMessage] }));
+  process.exit(0);
+}
+
 if (mode === "success-hang" || mode === "agent-end-fail") {
   console.log(JSON.stringify({ type: "agent_end", messages: [assistantMessage] }));
 }

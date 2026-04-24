@@ -43,6 +43,23 @@ describe("parseFrontmatter", () => {
     const result = parseFrontmatter(content);
     expect(result.frontmatter.description).toBe("Agent for http://example.com tasks");
   });
+
+  it("should strip quotes and comments without treating hashes inside quotes as comments", () => {
+    const content = [
+      "---",
+      "name: \"quoted-agent\" # inline comment",
+      "description: 'Uses # tags safely'",
+      "maxOutput: 1000",
+      "worktree: true",
+      "---",
+      "Body",
+    ].join("\n");
+    const result = parseFrontmatter(content);
+    expect(result.frontmatter.name).toBe("quoted-agent");
+    expect(result.frontmatter.description).toBe("Uses # tags safely");
+    expect(result.frontmatter.maxOutput).toBe("1000");
+    expect(result.frontmatter.worktree).toBe("true");
+  });
 });
 
 describe("loadAgentsFromDir", () => {
@@ -97,6 +114,52 @@ describe("loadAgentsFromDir", () => {
 
     const agents = await loadAgentsFromDir(testDir, "user");
     expect(agents).toHaveLength(1);
+  });
+
+  it("should load extended dependency-free config fields", async () => {
+    await writeFile(
+      join(testDir, "extended.md"),
+      [
+        "---",
+        "name: extended",
+        "description: Extended config",
+        "tools: [read, grep]",
+        "maxOutput: 4096",
+        "maxSubagentDepth: 2",
+        "output: final.md",
+        "defaultReads: [README.md, docs/spec.md]",
+        "defaultProgress: progress.md",
+        "context: fork",
+        "worktree: true",
+        "---",
+        "Prompt.",
+      ].join("\n"),
+    );
+
+    const agents = await loadAgentsFromDir(testDir, "project");
+    const extended = agents.find((a) => a.name === "extended")!;
+    expect(extended.tools).toEqual(["read", "grep"]);
+    expect(extended.maxOutput).toBe(4096);
+    expect(extended.maxSubagentDepth).toBe(2);
+    expect(extended.output).toBe("final.md");
+    expect(extended.defaultReads).toEqual(["README.md", "docs/spec.md"]);
+    expect(extended.defaultProgress).toBe("progress.md");
+    expect(extended.context).toBe("fork");
+    expect(extended.worktree).toBe(true);
+  });
+
+  it("should ignore invalid extended frontmatter values", async () => {
+    await writeFile(
+      join(testDir, "invalid-extended.md"),
+      "---\nname: invalid-extended\ndescription: Invalid extended\nmaxOutput: 0\nmaxSubagentDepth: -1\ncontext: reuse\nworktree: maybe\n---\nPrompt.",
+    );
+
+    const agents = await loadAgentsFromDir(testDir, "project");
+    const agent = agents.find((a) => a.name === "invalid-extended")!;
+    expect(agent.maxOutput).toBeUndefined();
+    expect(agent.maxSubagentDepth).toBeUndefined();
+    expect(agent.context).toBeUndefined();
+    expect(agent.worktree).toBeUndefined();
   });
 
   it("should return empty array for non-existent directory", async () => {

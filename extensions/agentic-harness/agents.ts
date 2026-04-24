@@ -3,14 +3,48 @@ import { join, dirname } from "path";
 import { homedir } from "os";
 import { existsSync } from "fs";
 
+export type SubagentContextMode = "fresh" | "fork";
+
 export interface AgentConfig {
   name: string;
   description: string;
   tools?: string[];
   model?: string;
+  maxOutput?: number;
+  maxSubagentDepth?: number;
+  output?: string;
+  defaultReads?: string[];
+  defaultProgress?: string;
+  context?: SubagentContextMode;
+  worktree?: boolean;
   systemPrompt: string;
   source: "bundled" | "user" | "project";
   filePath: string;
+}
+
+function stripInlineComment(value: string): string {
+  let quote: string | undefined;
+  for (let i = 0; i < value.length; i++) {
+    const char = value[i];
+    if ((char === '"' || char === "'") && value[i - 1] !== "\\") {
+      quote = quote === char ? undefined : quote || char;
+      continue;
+    }
+    if (char === "#" && !quote) return value.slice(0, i).trim();
+  }
+  return value.trim();
+}
+
+function unquote(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length >= 2) {
+    const first = trimmed[0];
+    const last = trimmed[trimmed.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return trimmed.slice(1, -1).replace(/\\(["'])/g, "$1");
+    }
+  }
+  return trimmed;
 }
 
 export function parseFrontmatter(content: string): {
@@ -21,14 +55,49 @@ export function parseFrontmatter(content: string): {
   if (!match) return { frontmatter: {}, body: content };
 
   const frontmatter: Record<string, string> = {};
-  for (const line of match[1].split("\n")) {
+  for (const rawLine of match[1].split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
     const idx = line.indexOf(":");
     if (idx === -1) continue;
     const key = line.slice(0, idx).trim();
-    const value = line.slice(idx + 1).trim();
+    const value = unquote(stripInlineComment(line.slice(idx + 1)));
     if (key) frontmatter[key] = value;
   }
   return { frontmatter, body: match[2].trim() };
+}
+
+function parseStringArray(value: string | undefined): string[] | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  const inner = trimmed.startsWith("[") && trimmed.endsWith("]")
+    ? trimmed.slice(1, -1)
+    : trimmed;
+  const parts = inner
+    .split(",")
+    .map((item) => unquote(item.trim()))
+    .filter((item) => item.length > 0);
+  return parts.length > 0 ? parts : undefined;
+}
+
+function parsePositiveInteger(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
+  return parsed;
+}
+
+function parseBoolean(value: string | undefined): boolean | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (["true", "yes", "1", "on"].includes(normalized)) return true;
+  if (["false", "no", "0", "off"].includes(normalized)) return false;
+  return undefined;
+}
+
+function parseContext(value: string | undefined): SubagentContextMode | undefined {
+  if (value === "fresh" || value === "fork") return value;
+  return undefined;
 }
 
 export async function loadAgentsFromDir(
@@ -58,10 +127,15 @@ export async function loadAgentsFromDir(
       agents.push({
         name: frontmatter.name,
         description: frontmatter.description,
-        tools: frontmatter.tools
-          ? frontmatter.tools.split(",").map((t) => t.trim())
-          : undefined,
+        tools: parseStringArray(frontmatter.tools),
         model: frontmatter.model || undefined,
+        maxOutput: parsePositiveInteger(frontmatter.maxOutput),
+        maxSubagentDepth: parsePositiveInteger(frontmatter.maxSubagentDepth),
+        output: frontmatter.output || undefined,
+        defaultReads: parseStringArray(frontmatter.defaultReads || frontmatter.reads),
+        defaultProgress: frontmatter.defaultProgress || frontmatter.progress || undefined,
+        context: parseContext(frontmatter.context),
+        worktree: parseBoolean(frontmatter.worktree),
         systemPrompt: body,
         source,
         filePath,

@@ -2,12 +2,14 @@
 import { spawn } from "child_process";
 import { appendFile, mkdir, writeFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
-import { join, basename, dirname } from "path";
+import { join, basename, dirname, relative } from "path";
 import { randomBytes } from "crypto";
 import { existsSync } from "fs";
-import type { AgentConfig } from "./agents.js";
+import type { AgentConfig, SubagentContextMode } from "./agents.js";
 import type { SingleResult, SubagentDetails } from "./types.js";
 import { emptyUsage, getFinalOutput } from "./types.js";
+import { createArtifactContext, readDeclaredFiles, readFilePrefix, type ArtifactContext } from "./artifacts.js";
+import { captureWorktreeDiff, cleanupWorktree, createWorktree, type WorktreeContext } from "./worktree.js";
 import { processPiJsonLine } from "./runner-events.js";
 import { getInheritedCliArgs } from "./runner-cli.js";
 import { getDefaultApprovalStore } from "./sandbox/approval-store.js";
@@ -28,6 +30,8 @@ const SUBAGENT_PARENT_RUN_ID_ENV = "PI_SUBAGENT_PARENT_RUN_ID";
 const SUBAGENT_ROOT_RUN_ID_ENV = "PI_SUBAGENT_ROOT_RUN_ID";
 const SUBAGENT_OWNER_ENV = "PI_SUBAGENT_OWNER";
 const SUBAGENT_PROCESS_LOG_ENV = "PI_SUBAGENT_PROCESS_LOG";
+const SUBAGENT_FORK_SESSION_ENV = "PI_SUBAGENT_FORK_SESSION";
+const SUBAGENT_CONTEXT_MODE_ENV = "PI_SUBAGENT_CONTEXT_MODE";
 
 export const DEFAULT_MAX_DEPTH = 3;
 
@@ -58,6 +62,23 @@ export function resolveDepthConfig(): DepthConfig {
     ancestorStack,
     preventCycles,
   };
+}
+
+function sanitizedParentEnv(): NodeJS.ProcessEnv {
+  if (process.env.PI_SUBAGENT_INHERIT_ENV === "1") return process.env;
+  const env = { ...process.env };
+  for (const key of [
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
+    "GITLAB_TOKEN",
+    "NPM_TOKEN",
+    "YARN_NPM_AUTH_TOKEN",
+    "HOMEBREW_GITHUB_API_TOKEN",
+    "SSH_AUTH_SOCK",
+  ]) {
+    delete env[key];
+  }
+  return env;
 }
 
 export function getCycleViolations(requested: string[], stack: string[]): string[] {
@@ -140,15 +161,22 @@ async function writeTempSystemPrompt(content: string): Promise<string> {
   return filepath;
 }
 
-function buildPiArgs(agent: AgentConfig | undefined, systemPromptPath: string | null, task: string): string[] {
+function buildPiArgs(agent: AgentConfig | undefined, systemPromptPath: string | null, task: string, contextMode: SubagentContextMode = "fresh"): string[] {
   const inherited = getInheritedCliArgs();
   const args = [
     "--mode", "json",
     ...inherited.extensionArgs,
     ...inherited.alwaysProxy,
     "-p",
-    "--no-session",
   ];
+
+  if (contextMode === "fork") {
+    const forkSession = process.env[SUBAGENT_FORK_SESSION_ENV];
+    if (!forkSession) throw new Error('context:"fork" requires PI_SUBAGENT_FORK_SESSION to identify the parent session to fork.');
+    args.push("--fork", forkSession);
+  } else {
+    args.push("--no-session");
+  }
 
   const model = agent?.model ?? inherited.fallbackModel;
   if (model) args.push("--model", model);
@@ -203,6 +231,12 @@ export interface RunAgentOptions {
   onLifecycleEvent?: (event: RunLifecycleEvent) => void;
   makeDetails: (results: SingleResult[]) => SubagentDetails;
   sandbox?: Omit<SandboxRuntimeOptions, "approvalStore"> & { approvalStore?: SandboxRuntimeOptions["approvalStore"] };
+  maxOutput?: number;
+  output?: string;
+  reads?: string[];
+  progress?: string;
+  contextMode?: SubagentContextMode;
+  worktree?: boolean;
 }
 
 function generateRunId(): string {
@@ -247,6 +281,12 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
     onLifecycleEvent,
     makeDetails,
     sandbox,
+    maxOutput,
+    output,
+    reads,
+    progress,
+    contextMode: requestedContextMode,
+    worktree,
   } = opts;
 
   if (!agent) {
@@ -272,6 +312,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
     stderr: "",
     usage: emptyUsage(),
     model: agent.model,
+    maxOutput: maxOutput ?? agent.maxOutput,
+    contextMode: requestedContextMode ?? agent.context ?? "fresh",
   };
 
   const emitUpdate = () => {
@@ -284,26 +326,93 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
   const invocation = getPiInvocation();
   let tmpPromptPath: string | undefined;
   let sandboxCleanup: (() => Promise<void>) | undefined;
+  let artifactContext: ArtifactContext | undefined;
+  let worktreeContext: WorktreeContext | undefined;
+  let runCwd = cwd;
+  const resolvedOwnership = resolveRunOwnership(ownership, agentName);
 
   try {
+    const effectiveOutput = output ?? agent.output;
+    const effectiveReads = reads ?? agent.defaultReads;
+    const effectiveProgress = progress ?? agent.defaultProgress;
+    const effectiveWorktree = worktree ?? agent.worktree;
+    const needsArtifacts = !!effectiveOutput || !!effectiveProgress || !!effectiveReads?.length || !!effectiveWorktree;
+
+    if (needsArtifacts) {
+      artifactContext = await createArtifactContext({
+        cwd,
+        rootRunId: resolvedOwnership.rootRunId,
+        runId: resolvedOwnership.runId,
+        agentName,
+        output: effectiveOutput,
+        reads: effectiveReads,
+        progress: effectiveProgress,
+      });
+      result.artifacts = {
+        artifactDir: artifactContext.runDir,
+        outputFile: artifactContext.outputFile,
+        progressFile: artifactContext.progressFile,
+        readFiles: artifactContext.readFiles,
+      };
+    }
+
+    if (effectiveWorktree) {
+      try {
+        worktreeContext = await createWorktree(cwd, resolvedOwnership.runId);
+        const relativeCwd = relative(worktreeContext.gitRoot, cwd);
+        runCwd = relativeCwd && !relativeCwd.startsWith("..") ? join(worktreeContext.path, relativeCwd) : worktreeContext.path;
+        result.worktree = {
+          logicalCwd: cwd,
+          worktreePath: worktreeContext.path,
+          worktreeCleanupStatus: worktreeContext.cleanupStatus,
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        result.exitCode = 1;
+        result.stopReason = "error";
+        result.errorMessage = `Failed to create git worktree: ${message}`;
+        result.worktree = { logicalCwd: cwd, worktreeCleanupStatus: "failed", worktreeError: message };
+        return result;
+      }
+    }
+
+    let effectiveTask = task;
+    if (artifactContext) {
+      const instructions: string[] = [];
+      if (artifactContext.readFiles.length > 0) {
+        instructions.push("Read and use the declared files included below before completing the task.");
+        effectiveTask += await readDeclaredFiles(artifactContext.readFiles, cwd);
+      }
+      if (artifactContext.outputFile) instructions.push(`Write your final answer to this file before finishing: ${artifactContext.outputFile}`);
+      if (artifactContext.progressFile) instructions.push(`Keep progress notes in this file as you work: ${artifactContext.progressFile}`);
+      if (instructions.length > 0) {
+        effectiveTask = `${effectiveTask}\n\nSubagent file IO instructions:\n- ${instructions.join("\n- ")}`;
+      }
+    }
+
     if (agent.systemPrompt?.trim()) {
       tmpPromptPath = await writeTempSystemPrompt(agent.systemPrompt);
     }
 
-    const piArgs = buildPiArgs(agent, tmpPromptPath || null, task);
+    const contextMode = requestedContextMode ?? agent.context ?? "fresh";
+    const piArgs = buildPiArgs(agent, tmpPromptPath || null, effectiveTask, contextMode);
     const allArgs = [...invocation.args, ...piArgs];
 
     const nextDepth = depthConfig.currentDepth + 1;
     const propagatedStack = [...depthConfig.ancestorStack, agentName];
-    const resolvedOwnership = resolveRunOwnership(ownership, agentName);
+    const effectiveMaxDepth = agent.maxSubagentDepth ? Math.min(depthConfig.maxDepth, agent.maxSubagentDepth) : depthConfig.maxDepth;
     const processLogPath = extraEnv?.[SUBAGENT_PROCESS_LOG_ENV] || process.env[SUBAGENT_PROCESS_LOG_ENV];
     const effectiveEnv: Record<string, string | undefined> = {
-      ...process.env,
+      ...sanitizedParentEnv(),
       ...extraEnv,
       [SUBAGENT_DEPTH_ENV]: String(nextDepth),
-      [SUBAGENT_MAX_DEPTH_ENV]: String(depthConfig.maxDepth),
+      [SUBAGENT_MAX_DEPTH_ENV]: String(effectiveMaxDepth),
       [SUBAGENT_STACK_ENV]: JSON.stringify(propagatedStack),
       [SUBAGENT_PREVENT_CYCLES_ENV]: depthConfig.preventCycles ? "1" : "0",
+      [SUBAGENT_CONTEXT_MODE_ENV]: contextMode,
+      PI_SUBAGENT_ARTIFACT_DIR: artifactContext?.runDir,
+      PI_SUBAGENT_OUTPUT_FILE: artifactContext?.outputFile,
+      PI_SUBAGENT_PROGRESS_FILE: artifactContext?.progressFile,
       [SUBAGENT_RUN_ID_ENV]: resolvedOwnership.runId,
       [SUBAGENT_PARENT_RUN_ID_ENV]: resolvedOwnership.parentRunId,
       [SUBAGENT_ROOT_RUN_ID_ENV]: resolvedOwnership.rootRunId,
@@ -312,7 +421,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
     const resolvedSandbox = await resolveSandboxLaunch({
       command: invocation.command,
       args: allArgs,
-      cwd,
+      cwd: runCwd,
       env: effectiveEnv,
       platform: process.platform,
       sandbox: sandbox?.enabled
@@ -331,7 +440,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
 
     const exitCode = await new Promise<number>((resolve) => {
       const proc = spawn(resolvedSandbox.command, resolvedSandbox.args, {
-        cwd,
+        cwd: runCwd,
         shell: false,
         detached: process.platform !== "win32",
         stdio: ["pipe", "pipe", "pipe"],
@@ -537,7 +646,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
     result.exitCode = exitCode;
 
     const hasSemanticOutput = result.sawAgentEnd && !!getFinalOutput(result.messages).trim();
-    const endedViaSemanticReap = semanticTerminationRequested && hasSemanticOutput && (closeSignal === "SIGTERM" || closeSignal === "SIGKILL");
+    const endedViaSemanticReap = (semanticTerminationRequested || wasAborted) && hasSemanticOutput && (closeSignal === "SIGTERM" || closeSignal === "SIGKILL");
 
     if (endedViaSemanticReap) {
       result.exitCode = 0;
@@ -552,8 +661,55 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
       if (!result.errorMessage && result.stderr.trim()) result.errorMessage = result.stderr.trim();
     }
 
+    if (artifactContext?.outputFile) {
+      try {
+        const output = await readFilePrefix(artifactContext.outputFile, result.maxOutput || 24000);
+        const outputText = output.truncated
+          ? `${output.text}\n\n[truncated artifact output: ${output.originalBytes} -> ${result.maxOutput || 24000} bytes]`
+          : output.text;
+        if (outputText.trim()) {
+          result.messages.push({ role: "assistant", content: [{ type: "text", text: outputText }] });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        result.artifacts = { ...result.artifacts, artifactError: `Output file was not readable: ${message}` };
+      }
+    }
+
+    if (worktreeContext && artifactContext) {
+      await captureWorktreeDiff(worktreeContext, artifactContext.runDir);
+      result.worktree = {
+        ...result.worktree,
+        logicalCwd: cwd,
+        worktreePath: worktreeContext.path,
+        worktreeDiffFile: worktreeContext.diffFile,
+        worktreeCleanupStatus: worktreeContext.cleanupStatus,
+        worktreeError: worktreeContext.error,
+      };
+    }
+
+    return result;
+  } catch (error) {
+    if (result.exitCode === -1) {
+      const message = error instanceof Error ? error.message : String(error);
+      result.exitCode = 1;
+      result.stopReason = "error";
+      result.errorMessage = message;
+      if (result.contextMode === "fork") result.contextError = message;
+    }
     return result;
   } finally {
+    if (worktreeContext) {
+      await cleanupWorktree(worktreeContext).catch(() => undefined);
+      result.worktree = {
+        ...result.worktree,
+        logicalCwd: cwd,
+        worktreePath: worktreeContext.path,
+        worktreeDiffFile: worktreeContext.diffFile,
+        worktreeCleanupStatus: worktreeContext.cleanupStatus,
+        worktreeError: worktreeContext.error,
+      };
+    }
     if (tmpPromptPath) await unlink(tmpPromptPath).catch(() => {});
     await sandboxCleanup?.().catch(() => undefined);
   }

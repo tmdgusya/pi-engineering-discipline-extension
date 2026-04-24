@@ -170,6 +170,22 @@ export function renderResult(
   return renderParallelResult(details, expanded, theme);
 }
 
+function renderMetadata(r: SingleResult, fg: ThemeFg): string {
+  const lines: string[] = [];
+  if (r.outputTruncation?.truncated) {
+    lines.push(`truncated ${r.outputTruncation.originalLength} → ${r.outputTruncation.returnedLength} chars (max ${r.outputTruncation.maxOutput})`);
+  }
+  if (r.artifacts?.artifactDir) lines.push(`artifacts ${shortenPath(r.artifacts.artifactDir)}`);
+  if (r.artifacts?.outputFile) lines.push(`output ${shortenPath(r.artifacts.outputFile)}`);
+  if (r.artifacts?.progressFile) lines.push(`progress ${shortenPath(r.artifacts.progressFile)}`);
+  if (r.contextMode) lines.push(`context ${r.contextMode}${r.contextError ? ` (${r.contextError})` : ""}`);
+  if (r.worktree?.worktreePath) lines.push(`worktree ${shortenPath(r.worktree.worktreePath)} cleanup=${r.worktree.worktreeCleanupStatus || "unknown"}`);
+  if (r.worktree?.worktreeDiffFile) lines.push(`diff ${shortenPath(r.worktree.worktreeDiffFile)}`);
+  if (r.artifacts?.artifactError) lines.push(`artifact warning ${r.artifacts.artifactError}`);
+  if (r.worktree?.worktreeError) lines.push(`worktree warning ${r.worktree.worktreeError}`);
+  return lines.length > 0 ? fg("dim", lines.join(" • ")) : "";
+}
+
 function renderNestedCalls(r: SingleResult, fg: ThemeFg): string {
   if (!r.nestedCalls || r.nestedCalls.length === 0) return "";
   const isRunning = r.exitCode === -1;
@@ -201,6 +217,8 @@ function renderSingleResult(
     if (error && r.stopReason) header += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
     container.addChild(new Text(header, 0, 0));
     if (error && r.errorMessage) container.addChild(new Text(theme.fg("error", `Error: ${r.errorMessage}`), 0, 0));
+    const expandedMetadata = renderMetadata(r, theme.fg.bind(theme));
+    if (expandedMetadata) container.addChild(new Text(expandedMetadata, 0, 0));
 
     // Task
     container.addChild(new Spacer(1));
@@ -245,6 +263,8 @@ function renderSingleResult(
   // Collapsed
   let text = `${icon} ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}`;
   if (error && r.stopReason) text += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
+  const metadataText = renderMetadata(r, theme.fg.bind(theme));
+  if (metadataText) text += `\n${metadataText}`;
 
   if (error && r.errorMessage) {
     text += `\n${theme.fg("error", `Error: ${r.errorMessage}`)}`;
@@ -302,6 +322,8 @@ function renderParallelResult(
       container.addChild(new Spacer(1));
       container.addChild(new Text(`${theme.fg("muted", "─── ")}${theme.fg("accent", r.agent)} ${rIcon}`, 0, 0));
       container.addChild(new Text(theme.fg("muted", "Task: ") + theme.fg("dim", r.task), 0, 0));
+      const taskMetadata = renderMetadata(r, theme.fg.bind(theme));
+      if (taskMetadata) container.addChild(new Text(taskMetadata, 0, 0));
 
       for (const item of displayItems) {
         if (item.type === "toolCall") {
@@ -337,6 +359,8 @@ function renderParallelResult(
     const rIcon = statusIcon(r, theme.fg.bind(theme));
     const displayItems = getDisplayItems(r.messages);
     text += `\n\n${theme.fg("muted", "─── ")}${theme.fg("accent", r.agent)} ${rIcon}`;
+    const taskMetadata = renderMetadata(r, theme.fg.bind(theme));
+    if (taskMetadata) text += `\n${taskMetadata}`;
     if (displayItems.length === 0) {
       text += `\n${theme.fg(r.exitCode === -1 ? "muted" : isResultError(r) ? "error" : "muted", r.exitCode === -1 ? "(running...)" : getResultSummaryText(r))}`;
     } else {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, afterAll, describe, it, expect, vi } from "vitest";
 
 vi.mock("@mariozechner/pi-coding-agent", () => ({
   createBashTool: vi.fn(() => ({
@@ -24,6 +24,27 @@ vi.mock("@mariozechner/pi-ai", () => ({
 }));
 
 import extension from "../index.js";
+
+const originalSubagentEnv = {
+  PI_SUBAGENT_DEPTH: process.env.PI_SUBAGENT_DEPTH,
+  PI_SUBAGENT_MAX_DEPTH: process.env.PI_SUBAGENT_MAX_DEPTH,
+  PI_SUBAGENT_STACK: process.env.PI_SUBAGENT_STACK,
+  PI_SUBAGENT_PREVENT_CYCLES: process.env.PI_SUBAGENT_PREVENT_CYCLES,
+};
+
+beforeEach(() => {
+  delete process.env.PI_SUBAGENT_DEPTH;
+  delete process.env.PI_SUBAGENT_MAX_DEPTH;
+  delete process.env.PI_SUBAGENT_STACK;
+  delete process.env.PI_SUBAGENT_PREVENT_CYCLES;
+});
+
+afterAll(() => {
+  for (const [key, value] of Object.entries(originalSubagentEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+});
 
 function createMockPi() {
   const tools = new Map<string, any>();

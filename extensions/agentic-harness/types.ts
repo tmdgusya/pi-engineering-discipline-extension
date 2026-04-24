@@ -14,6 +14,29 @@ export interface NestedSubagentCall {
   task: string;
 }
 
+export interface OutputTruncationMetadata {
+  truncated: boolean;
+  originalLength: number;
+  returnedLength: number;
+  maxOutput: number;
+}
+
+export interface ArtifactMetadata {
+  artifactDir?: string;
+  outputFile?: string;
+  progressFile?: string;
+  readFiles?: string[];
+  artifactError?: string;
+}
+
+export interface WorktreeMetadata {
+  logicalCwd?: string;
+  worktreePath?: string;
+  worktreeDiffFile?: string;
+  worktreeCleanupStatus?: "not-needed" | "removed" | "failed" | "kept";
+  worktreeError?: string;
+}
+
 /** Result of a single subagent invocation. */
 export interface SingleResult {
   agent: string;
@@ -28,6 +51,12 @@ export interface SingleResult {
   errorMessage?: string;
   sawAgentEnd?: boolean;
   nestedCalls?: NestedSubagentCall[];
+  maxOutput?: number;
+  outputTruncation?: OutputTruncationMetadata;
+  artifacts?: ArtifactMetadata;
+  contextMode?: "fresh" | "fork";
+  contextError?: string;
+  worktree?: WorktreeMetadata;
 }
 
 /** Metadata attached to every tool result for rendering. */
@@ -104,11 +133,39 @@ export function getDisplayItems(messages: any[]): DisplayItem[] {
   return items;
 }
 
+export function truncateForModel(text: string, maxOutput: number | undefined): { text: string; metadata?: OutputTruncationMetadata } {
+  if (!maxOutput || maxOutput <= 0 || text.length <= maxOutput) return { text };
+  const marker = `\n\n[truncated: ${text.length} -> ${maxOutput} chars]`;
+  let truncated: string;
+  if (marker.length >= maxOutput) {
+    truncated = marker.slice(marker.length - maxOutput);
+  } else {
+    const separator = "\n…\n";
+    const bodyLimit = Math.max(0, maxOutput - marker.length - separator.length);
+    const headLength = Math.ceil(bodyLimit * 0.7);
+    const tailLength = Math.max(0, bodyLimit - headLength);
+    truncated = tailLength > 0
+      ? `${text.slice(0, headLength)}${separator}${text.slice(text.length - tailLength)}${marker}`
+      : `${text.slice(0, maxOutput - marker.length)}${marker}`;
+  }
+  return {
+    text: truncated,
+    metadata: {
+      truncated: true,
+      originalLength: text.length,
+      returnedLength: truncated.length,
+      maxOutput,
+    },
+  };
+}
+
 /** Get a human-readable summary text from a result. */
-export function getResultSummaryText(r: SingleResult): string {
+export function getResultSummaryText(r: SingleResult, maxOutput?: number): string {
   const finalText = getFinalOutput(r.messages);
-  if (finalText) return finalText;
-  if (r.errorMessage) return r.errorMessage;
-  if (r.exitCode > 0 && r.stderr.trim()) return r.stderr.trim();
-  return "(no output)";
+  const raw = finalText || r.errorMessage || (r.exitCode > 0 && r.stderr.trim() ? r.stderr.trim() : "(no output)");
+  const limit = maxOutput ?? r.maxOutput;
+  const { text, metadata } = truncateForModel(raw, limit);
+  if (metadata) r.outputTruncation = metadata;
+  if (limit) r.maxOutput = limit;
+  return text;
 }

@@ -151,6 +151,7 @@ describe.runIf(process.platform !== "win32")("runAgent process ownership", () =>
 
     process.argv = [process.execPath, fixtureScript];
     const controller = new AbortController();
+    let sawSemanticOutput = false;
 
     const runPromise = runAgent({
       agent: {
@@ -170,15 +171,113 @@ describe.runIf(process.platform !== "win32")("runAgent process ownership", () =>
         FIXTURE_STATE_FILE: stateFile,
       },
       signal: controller.signal,
+      onUpdate: (partial) => {
+        sawSemanticOutput = partial.content.some((item) => item.type === "text" && item.text.includes("fixture complete"));
+      },
       makeDetails: (results) => ({ mode: "single", results }),
     });
 
     await waitFor(() => !!loadState(stateFile).grandchildPid, 2000);
+    await waitFor(() => sawSemanticOutput, 2000);
     controller.abort();
     const result = await runPromise;
 
     expect(result.exitCode).toBe(0);
     expect(result.stopReason).not.toBe("aborted");
+  });
+
+  it("passes --fork and the parent session id when context fork is requested", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "subagent-process-fork-"));
+    tempDirs.push(tempDir);
+    const stateFile = join(tempDir, "state.json");
+    const originalForkSession = process.env.PI_SUBAGENT_FORK_SESSION;
+
+    process.argv = [process.execPath, fixtureScript];
+    process.env.PI_SUBAGENT_FORK_SESSION = "parent-session-123";
+
+    try {
+      const result = await runAgent({
+        agent: {
+          name: "fixture",
+          description: "fixture agent",
+          filePath: fixtureScript,
+          source: "project",
+          systemPrompt: "",
+          tools: [],
+        },
+        agentName: "fixture",
+        task: "success-hang",
+        cwd: tempDir,
+        depthConfig: resolveDepthConfig(),
+        ownership: { runId: "root-fork-run", owner: "test-suite" },
+        extraEnv: {
+          FIXTURE_STATE_FILE: stateFile,
+        },
+        contextMode: "fork",
+        makeDetails: (results) => ({ mode: "single", results }),
+      });
+
+      await waitFor(() => !!loadState(stateFile).grandchildPid, 2000);
+      const state = loadState(stateFile);
+      trackedPids.add(state.parentPid);
+      trackedPids.add(state.grandchildPid);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.contextMode).toBe("fork");
+      expect(state.contextMode).toBe("fork");
+      expect(state.argv).toContain("--fork");
+      expect(state.argv).toContain("parent-session-123");
+      expect(state.argv).not.toContain("--no-session");
+    } finally {
+      if (originalForkSession === undefined) delete process.env.PI_SUBAGENT_FORK_SESSION;
+      else process.env.PI_SUBAGENT_FORK_SESSION = originalForkSession;
+    }
+  });
+
+  it("reads artifact output written by the child process", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "subagent-process-output-"));
+    tempDirs.push(tempDir);
+    const stateFile = join(tempDir, "state.json");
+    const originalArtifactRoot = process.env.PI_SUBAGENT_ARTIFACT_ROOT;
+
+    process.argv = [process.execPath, fixtureScript];
+    process.env.PI_SUBAGENT_ARTIFACT_ROOT = join(tempDir, ".runs");
+
+    try {
+      const result = await runAgent({
+        agent: {
+          name: "fixture",
+          description: "fixture agent",
+          filePath: fixtureScript,
+          source: "project",
+          systemPrompt: "",
+          tools: [],
+        },
+        agentName: "fixture",
+        task: "write-output",
+        cwd: tempDir,
+        depthConfig: resolveDepthConfig(),
+        ownership: { runId: "root-output-run", rootRunId: "root-output-run", owner: "test-suite" },
+        extraEnv: {
+          FIXTURE_STATE_FILE: stateFile,
+        },
+        output: "final.md",
+        makeDetails: (results) => ({ mode: "single", results }),
+      });
+
+      const state = loadState(stateFile);
+
+      const artifactDir = result.artifacts?.artifactDir;
+
+      expect(result.exitCode).toBe(0);
+      expect(artifactDir).toBe(join(tempDir, ".runs", "root-output-run", "subagents", "fixture-root-output-run"));
+      expect(result.artifacts?.outputFile).toBe(join(artifactDir!, "final.md"));
+      expect(state.outputFile).toBe(result.artifacts?.outputFile);
+      expect(result.messages.at(-1)?.content).toEqual([{ type: "text", text: "artifact final answer" }]);
+    } finally {
+      if (originalArtifactRoot === undefined) delete process.env.PI_SUBAGENT_ARTIFACT_ROOT;
+      else process.env.PI_SUBAGENT_ARTIFACT_ROOT = originalArtifactRoot;
+    }
   });
 
   it("kills owned descendants when aborted", async () => {

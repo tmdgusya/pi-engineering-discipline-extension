@@ -3,11 +3,12 @@ import { createBashTool, isToolCallEventType, keyHint, keyText, rawKeyHint } fro
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { RoachFooter, type CacheStats, type ActiveTools } from "./footer.js";
+import { homedir } from "os";
 import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { discoverAgents } from "./agents.js";
 import { runAgent, mapWithConcurrencyLimit, MAX_CONCURRENCY, MAX_PARALLEL_TASKS, resolveDepthConfig, getCycleViolations } from "./subagent.js";
-import { emptyUsage, isResultError, isResultSuccess, getResultSummaryText, getFinalOutput, type SingleResult, type SubagentDetails } from "./types.js";
+import { emptyUsage, isResultError, isResultSuccess, getResultSummaryText, type SingleResult, type SubagentDetails } from "./types.js";
 import { renderCall, renderResult } from "./render.js";
 import { parsePlan } from "./plan-parser.js";
 import { buildValidatorPrompt } from "./validator-template.js";
@@ -185,12 +186,18 @@ export default function (pi: ExtensionAPI) {
     agent: Type.String({ description: "Name of the agent to invoke" }),
     task: Type.String({ description: "Task to delegate to the agent" }),
     cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
+    output: Type.Optional(Type.String({ description: "Artifact-relative file path where the subagent should write its final output" })),
+    reads: Type.Optional(Type.Array(Type.String(), { description: "Files to include as declared read context for the subagent" })),
+    progress: Type.Optional(Type.String({ description: "Artifact-relative file path for progress notes" })),
   });
 
   const ChainItem = Type.Object({
     agent: Type.String({ description: "Name of the agent to invoke" }),
     task: Type.String({ description: "Task with optional {previous} placeholder for prior step output" }),
     cwd: Type.Optional(Type.String({ description: "Working directory for the agent process" })),
+    output: Type.Optional(Type.String({ description: "Artifact-relative file path where the subagent should write its final output" })),
+    reads: Type.Optional(Type.Array(Type.String(), { description: "Files to include as declared read context for the subagent" })),
+    progress: Type.Optional(Type.String({ description: "Artifact-relative file path for progress notes" })),
   });
 
   const SubagentParams = Type.Object({
@@ -204,6 +211,12 @@ export default function (pi: ExtensionAPI) {
       default: "user",
     })),
     cwd: Type.Optional(Type.String({ description: "Working directory for single mode" })),
+    maxOutput: Type.Optional(Type.Number({ description: "Maximum characters of model-facing subagent output to return. Adds truncation metadata when applied." })),
+    output: Type.Optional(Type.String({ description: "Artifact-relative file path where the subagent should write its final output" })),
+    reads: Type.Optional(Type.Array(Type.String(), { description: "Files to include as declared read context for the subagent" })),
+    progress: Type.Optional(Type.String({ description: "Artifact-relative file path for progress notes" })),
+    context: Type.Optional(Type.Unsafe<"fresh" | "fork">({ type: "string", enum: ["fresh", "fork"], description: "Session context mode. fresh preserves --no-session; fork requires PI_SUBAGENT_FORK_SESSION and fails fast if unavailable." })),
+    worktree: Type.Optional(Type.Boolean({ description: "Run parallel tasks in isolated git worktrees and capture per-task diffs." })),
     planFile: Type.Optional(Type.String({ description: "Path to plan file. Required when agent is plan-validator — the validator prompt is built from this file, not from the task field." })),
     planTaskId: Type.Optional(Type.Number({ description: "Task number in the plan file to validate (e.g. 1 for Task 1). Required when agent is plan-validator." })),
   });
@@ -234,7 +247,7 @@ export default function (pi: ExtensionAPI) {
       renderResult: (result, { expanded }, theme) => renderResult(result, expanded, theme),
 
       execute: async (toolCallId, params, signal, onUpdate, ctx) => {
-        const { agent, task, tasks, chain, agentScope, cwd } = params;
+        const { agent, task, tasks, chain, agentScope, cwd, maxOutput, output, reads, progress, context, worktree } = params;
         const hasUI = (ctx as any).hasUI !== false && !!ctx?.ui?.select;
         if (parsedApprovalMode.invalidRawValue && !warnedInvalidApprovalMode) {
           warnedInvalidApprovalMode = true;
@@ -276,7 +289,7 @@ export default function (pi: ExtensionAPI) {
           // Subagents must reach model/provider endpoints and update local
           // session lock/state files under PI_CODING_AGENT_DIR (default: ~/.pi/agent).
           networkMode: "on" as const,
-          additionalWritableRoots: [agentDir],
+          additionalWritableRoots: [agentDir, runCwd],
           approvalMode: parsedApprovalMode.mode,
           approvalResolver,
           approvalStore,
@@ -319,20 +332,25 @@ export default function (pi: ExtensionAPI) {
               onUpdate,
               sandbox: sandboxFor(step.cwd || defaultCwd),
               makeDetails: makeDetails("single"),
+              maxOutput,
+              output: step.output,
+              reads: step.reads,
+              progress: step.progress,
+              contextMode: context,
             });
             allResults.push(result);
 
             if (isResultError(result)) {
-              const summary = allResults.map((r, j) => `[${chain[j].agent}] ${isResultError(r) ? "failed" : "completed"}: ${getResultSummaryText(r)}`).join("\n\n");
+              const summary = allResults.map((r, j) => `[${chain[j].agent}] ${isResultError(r) ? "failed" : "completed"}: ${getResultSummaryText(r, maxOutput)}`).join("\n\n");
               return {
                 content: [{ type: "text" as const, text: `Chain failed at step ${i + 1}: ${result.errorMessage || "error"}\n\n${summary}` }],
                 details: makeDetails("single")(allResults),
               };
             }
-            previousOutput = getFinalOutput(result.messages) || result.stderr;
+            previousOutput = getResultSummaryText(result, maxOutput);
           }
 
-          const summary = allResults.map((r, i) => `[${chain[i].agent}] completed: ${getResultSummaryText(r)}`).join("\n\n");
+          const summary = allResults.map((r, i) => `[${chain[i].agent}] completed: ${getResultSummaryText(r, maxOutput)}`).join("\n\n");
           return {
             content: [{ type: "text" as const, text: summary }],
             details: makeDetails("single")(allResults),
@@ -391,6 +409,12 @@ export default function (pi: ExtensionAPI) {
                   }
                 },
                 makeDetails: makeDetails("parallel"),
+                maxOutput,
+                output: t.output,
+                reads: t.reads,
+                progress: t.progress,
+                contextMode: context,
+                worktree,
               });
               allResults[index] = result;
               emitProgress();
@@ -402,7 +426,7 @@ export default function (pi: ExtensionAPI) {
 
           const successCount = results.filter((r) => isResultSuccess(r)).length;
           const summaries = results.map((r) =>
-            `[${r.agent}] ${isResultError(r) ? "failed" : "completed"}: ${getResultSummaryText(r)}`,
+            `[${r.agent}] ${isResultError(r) ? "failed" : "completed"}: ${getResultSummaryText(r, maxOutput)}`,
           );
           return {
             content: [{ type: "text" as const, text: `Parallel: ${successCount}/${results.length} succeeded\n\n${summaries.join("\n\n")}` }],
@@ -440,6 +464,11 @@ export default function (pi: ExtensionAPI) {
             sandbox: sandboxFor(cwd || defaultCwd),
             onUpdate,
             makeDetails: makeDetails("single"),
+            maxOutput,
+            output,
+            reads,
+            progress,
+            contextMode: context,
           });
 
           if (isDisciplineAgent(agent) && isResultSuccess(result)) {
@@ -455,11 +484,13 @@ export default function (pi: ExtensionAPI) {
                 sandbox: sandboxFor(cwd || defaultCwd),
                 onUpdate,
                 makeDetails: makeDetails("single"),
+                maxOutput,
+                contextMode: context,
               });
-              const mainText = getResultSummaryText(result);
+              const mainText = getResultSummaryText(result, maxOutput);
               const cleanText = isResultSuccess(cleanResult)
-                ? `\n\n[slop-cleaner] completed: ${getResultSummaryText(cleanResult)}`
-                : `\n\n[slop-cleaner] failed: ${getResultSummaryText(cleanResult)}`;
+                ? `\n\n[slop-cleaner] completed: ${getResultSummaryText(cleanResult, maxOutput)}`
+                : `\n\n[slop-cleaner] failed: ${getResultSummaryText(cleanResult, maxOutput)}`;
               return {
                 content: [{ type: "text" as const, text: mainText + cleanText }],
                 details: makeDetails("single")([result, cleanResult]),
@@ -469,13 +500,13 @@ export default function (pi: ExtensionAPI) {
 
           if (isResultError(result)) {
             return {
-              content: [{ type: "text" as const, text: `Agent ${result.stopReason || "failed"}: ${getResultSummaryText(result)}` }],
+              content: [{ type: "text" as const, text: `Agent ${result.stopReason || "failed"}: ${getResultSummaryText(result, maxOutput)}` }],
               details: makeDetails("single")([result]),
               isError: true,
             };
           }
           return {
-            content: [{ type: "text" as const, text: getResultSummaryText(result) }],
+            content: [{ type: "text" as const, text: getResultSummaryText(result, maxOutput) }],
             details: makeDetails("single")([result]),
           };
         }

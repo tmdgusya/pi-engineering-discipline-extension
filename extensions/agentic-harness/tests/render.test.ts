@@ -82,6 +82,33 @@ describe("formatToolCall", () => {
   });
 });
 
+describe("metadata rendering via renderResult", () => {
+  it("should show truncation, artifacts, context, and worktree metadata", () => {
+    const result: SingleResult = {
+      agent: "worker",
+      agentSource: "bundled",
+      task: "t",
+      exitCode: 0,
+      messages: [],
+      stderr: "",
+      usage: emptyUsage(),
+      outputTruncation: { truncated: true, originalLength: 1000, returnedLength: 100, maxOutput: 100 },
+      artifacts: { artifactDir: "/tmp/artifacts", outputFile: "/tmp/artifacts/output.md", progressFile: "/tmp/artifacts/progress.md" },
+      contextMode: "fork",
+      contextError: "missing session",
+      worktree: { worktreePath: "/tmp/worktree", worktreeDiffFile: "/tmp/artifacts/worktree.diff.md", worktreeCleanupStatus: "removed" },
+    };
+    const details: SubagentDetails = { mode: "single", results: [result] };
+    const rendered = renderResult({ content: [{ type: "text", text: "" }], details }, false, theme);
+    const text = rendered.render(120).join("\n");
+    expect(text).toContain("truncated 1000 → 100 chars");
+    expect(text).toContain("artifacts /tmp/artifacts");
+    expect(text).toContain("context fork");
+    expect(text).toContain("worktree /tmp/worktree");
+    expect(text).toMatch(/diff\s+\/tmp\/artifacts\/worktree\.diff\.md/);
+  });
+});
+
 describe("nested subagent rendering via renderResult", () => {
   it("should show nested subagent calls with ⏳ when parent is running", () => {
     const result: SingleResult = {
