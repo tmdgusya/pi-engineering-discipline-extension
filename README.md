@@ -58,6 +58,107 @@ pi install git:github.com/tmdgusya/pi-engineering-discipline-extension
   - **`grep`** → FFF content search with pagination and smart-case behavior
   - **`multi_grep`** → multi-pattern OR search through the FFF engine
 
+### Parsers
+
+The agentic harness includes small, dependency-free parsers for the two file formats it consumes during orchestration.
+
+#### Agent frontmatter parser
+
+Agent definitions are Markdown files with YAML-like frontmatter followed by the system prompt body. Put user agents in `~/.pi/agent/agents/*.md`; put project-local agents in `.pi/agents/*.md`.
+
+```markdown
+---
+name: explorer
+description: Fast codebase exploration and investigation
+tools: read, grep, find
+maxOutput: 12000
+maxSubagentDepth: 2
+context: fresh
+worktree: false
+---
+You are a focused exploration agent. Read the codebase and report concise findings.
+```
+
+How to use it:
+
+```text
+Use the `subagent` tool with `agent: "explorer"`, or set `agentScope: "user"`, `"project"`, or `"both"` to control which agent directories are searched.
+```
+
+Supported fields:
+
+| Field | Example | Effect |
+|---|---|---|
+| `name` | `explorer` | Required agent identifier used by the `subagent` tool |
+| `description` | `Fast codebase exploration` | Required description shown to the parent agent |
+| `tools` | `read, grep, find` or `[read, grep, find]` | Optional tool allowlist |
+| `model` | `default` | Optional provider/model hint for the spawned agent |
+| `maxOutput` | `12000` | Optional positive integer truncation limit |
+| `maxSubagentDepth` | `2` | Optional positive integer depth limit for nested subagents |
+| `output` | `reports/explorer.md` | Optional default artifact output path |
+| `reads` / `defaultReads` | `src/index.ts, README.md` | Optional default files provided as read context |
+| `progress` / `defaultProgress` | `reports/progress.md` | Optional progress artifact path |
+| `context` | `fresh` or `fork` | Optional session context mode |
+| `worktree` | `true` or `false` | Optional git worktree isolation default |
+
+Parser notes:
+
+- Values may be quoted when they contain `#` or punctuation.
+- Inline comments are ignored outside quotes.
+- Comma-separated arrays can be written with or without brackets.
+- Invalid optional numbers, booleans, or context values are ignored instead of failing discovery.
+
+#### Plan markdown parser
+
+`plan-validator` uses a plan-file parser to build an isolated validation prompt from one task in a written implementation plan. You normally use it through the `subagent` tool, not by calling the parser directly.
+
+```ts
+await subagent({
+  agent: "plan-validator",
+  task: "validate",
+  planFile: "docs/engineering-discipline/plans/feature-plan.md",
+  planTaskId: 3,
+});
+```
+
+The parser expects plans with this shape:
+
+```markdown
+# Implementation Plan
+
+**Goal:** Build a feature
+
+## Verification Strategy
+
+**Command:** `npm test`
+
+### Task 3: Wire command handler
+
+**Dependencies:** Runs after Task 2 completes
+
+Modify: `src/commands.ts`
+Test: `tests/commands.test.ts`
+
+- [ ] **Step 1:** Add the handler.
+- [ ] **Step 2:** Register it.
+
+Run: `npm test -- tests/commands.test.ts`
+Expected: command tests pass
+```
+
+What gets extracted:
+
+| Plan element | Used for |
+|---|---|
+| `**Goal:** ...` | Overall plan context |
+| `**Command:** \`...\`` | Final verification command |
+| `### Task N: ...` | Task ID and task name |
+| `### Task N (Final): ...` | Marks final verification tasks |
+| `**Dependencies:** ...` | Dependency context for validation |
+| `Create:` / `Modify:` / `Test:` file lines | Files the validator should inspect |
+| `Run:` + following `Expected:` | Task-specific verification criteria |
+| `- [ ] **Step 1:** ...` and following steps | Task execution details |
+
 ### FFF Search Engine
 
 ROACH PI now includes an embedded FFF-powered search extension under `extensions/fff-search`.
