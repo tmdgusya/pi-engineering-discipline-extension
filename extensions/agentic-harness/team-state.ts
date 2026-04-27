@@ -14,8 +14,10 @@ export type TeamEventType =
   | "run_resumed"
   | "run_completed"
   | "run_failed"
+  | "message_recorded"
   | "task_created"
   | "task_started"
+  | "task_heartbeat"
   | "task_completed"
   | "task_failed"
   | "task_interrupted";
@@ -39,14 +41,28 @@ export interface TeamRunRecord {
   options: TeamRunOptionsSnapshot;
   tasks: TeamTask[];
   events: TeamRunEvent[];
+  messages: TeamMessage[];
   summary?: TeamRunSummary;
 }
 
 export type TeamRunOptionsSnapshot = Pick<TeamRunOptions,
-  "goal" | "workerCount" | "agent" | "worktree" | "maxOutput" | "runId" | "resumeRunId" | "resumeMode" | "staleTaskMs"
+  "goal" | "workerCount" | "agent" | "worktree" | "worktreePolicy" | "maxOutput" | "runId" | "resumeRunId" | "resumeMode" | "staleTaskMs"
 >;
 
 export type StaleTaskResumeMode = "mark-interrupted" | "retry-stale";
+export type TeamMessageKind = "inbox" | "outbox" | "status" | "error";
+
+export interface TeamMessage {
+  id: string;
+  runId: string;
+  taskId: string;
+  from: string;
+  to: string;
+  kind: TeamMessageKind;
+  body: string;
+  createdAt: string;
+  deliveredAt?: string;
+}
 
 export interface MarkStaleRunningTasksOptions {
   now: string;
@@ -101,6 +117,7 @@ export function createTeamRunRecord(params: {
       workerCount: params.options?.workerCount,
       agent: params.options?.agent,
       worktree: params.options?.worktree,
+      worktreePolicy: params.options?.worktreePolicy,
       maxOutput: params.options?.maxOutput,
       runId: params.options?.runId,
       resumeRunId: params.options?.resumeRunId,
@@ -112,6 +129,7 @@ export function createTeamRunRecord(params: {
       { id: eventId(runId, -1), type: "run_created", runId, createdAt: params.now },
       ...createdEvents,
     ],
+    messages: [],
   };
 }
 
@@ -143,16 +161,42 @@ export function setTeamRunStatus(record: TeamRunRecord, status: TeamRunStatus, n
   };
 }
 
+export function recordTeamMessage(record: TeamRunRecord, message: Omit<TeamMessage, "id" | "runId">): TeamRunRecord {
+  const id = `${record.runId}-message-${record.messages.length + 1}`;
+  const next: TeamRunRecord = {
+    ...record,
+    updatedAt: message.createdAt,
+    messages: [
+      ...record.messages,
+      {
+        ...message,
+        id,
+        runId: record.runId,
+      },
+    ],
+  };
+  return recordTeamEvent(next, {
+    type: "message_recorded",
+    taskId: message.taskId,
+    createdAt: message.createdAt,
+    message: `${message.kind}:${message.from}->${message.to}`,
+  });
+}
+
 export function markStaleRunningTasks(record: TeamRunRecord, options: MarkStaleRunningTasksOptions): TeamRunRecord {
   const staleTaskMs = options.staleTaskMs ?? 0;
   const nowMs = Date.parse(options.now);
   let next = { ...record, tasks: record.tasks.map((task) => ({ ...task })), events: [...record.events], updatedAt: options.now };
 
-  next.tasks = next.tasks.map((task) => {
+  const mappedTasks = next.tasks.map((task) => {
     if (task.status !== "in_progress") return task;
     const timestamp = taskTimestamp(task);
-    const age = timestamp ? nowMs - Date.parse(timestamp) : Number.POSITIVE_INFINITY;
-    if (Number.isFinite(age) && age < staleTaskMs) return task;
+    const timestampMs = timestamp ? Date.parse(timestamp) : Number.NaN;
+    const age = Number.isFinite(nowMs) && Number.isFinite(timestampMs)
+      ? nowMs - timestampMs
+      : Number.POSITIVE_INFINITY;
+    const isStale = staleTaskMs <= 0 || !Number.isFinite(age) || age < 0 || age >= staleTaskMs;
+    if (!isStale) return task;
 
     const status: TeamTaskStatus = options.mode === "retry-stale" ? "pending" : "interrupted";
     const message = options.mode === "retry-stale"
@@ -166,6 +210,7 @@ export function markStaleRunningTasks(record: TeamRunRecord, options: MarkStaleR
       errorMessage: status === "interrupted" ? message : task.errorMessage,
     };
   });
+  next = { ...next, tasks: mappedTasks };
 
   return next;
 }

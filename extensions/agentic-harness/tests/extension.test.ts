@@ -149,7 +149,12 @@ describe("Extension Registration", () => {
     expect(schema.properties.agent).toBeDefined();
     expect(schema.properties.agentScope).toBeDefined();
     expect(schema.properties.worktree).toBeDefined();
+    expect(schema.properties.worktreePolicy).toBeDefined();
     expect(schema.properties.maxOutput).toBeDefined();
+    expect(schema.properties.runId).toBeDefined();
+    expect(schema.properties.resumeRunId).toBeDefined();
+    expect(schema.properties.resumeMode).toBeDefined();
+    expect(schema.properties.staleTaskMs).toBeDefined();
     expect(schema.required).toContain("goal");
   });
 

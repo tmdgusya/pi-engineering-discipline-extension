@@ -6,6 +6,7 @@ import {
   createDefaultTeamTasks,
   formatTeamRunSummary,
   runTeam,
+  resolveTeamWorktreePolicy,
   synthesizeTeamRun,
   validateTeamTasks,
 } from "../team.js";
@@ -103,6 +104,81 @@ describe("runTeam", () => {
     expect(summary.verificationEvidence.failed).toBe(false);
     expect(summary.verificationEvidence.artifactRefs).toEqual([".pi/team/task-1.md", ".pi/team/task-2.md"]);
     expect(summary.verificationEvidence.worktreeRefs).toEqual(["/tmp/task-1", "/tmp/task-2"]);
+  });
+
+  it("persists lifecycle records plus inbox/outbox messages when persistence is enabled", async () => {
+    const records: any[] = [];
+
+    const summary = await runTeam(
+      { goal: "Persist lifecycle", workerCount: 1, agent: "worker", runId: "team-persist-test", heartbeatMs: 0 },
+      {
+        now: (() => {
+          let tick = 0;
+          return () => `2026-04-27T00:00:0${tick++}.000Z`;
+        })(),
+        persistRun: (record) => {
+          records.push(JSON.parse(JSON.stringify(record)));
+        },
+        runTask: async ({ task, prompt, worktree }) => {
+          expect(worktree).toBe(false);
+          return fakeResult(task.agent, prompt, "persisted worker done");
+        },
+      },
+    );
+
+    const finalRecord = records.at(-1);
+    expect(summary.success).toBe(true);
+    expect(records.length).toBeGreaterThan(2);
+    expect(finalRecord.status).toBe("completed");
+    expect(finalRecord.runId).toBe("team-persist-test");
+    expect(finalRecord.events.map((event: any) => event.type)).toEqual(expect.arrayContaining([
+      "run_created",
+      "task_created",
+      "task_started",
+      "message_recorded",
+      "task_completed",
+      "run_completed",
+    ]));
+    expect(finalRecord.messages.map((message: any) => message.kind)).toEqual(["inbox", "outbox"]);
+  });
+
+  it("resumes stale in-progress records conservatively without reporting success", async () => {
+    const [task] = createDefaultTeamTasks("Resume interrupted run", 1, "worker");
+    task.status = "in_progress";
+    task.startedAt = "2026-04-27T00:00:00.000Z";
+    task.updatedAt = "2026-04-27T00:00:00.000Z";
+    const loadedRecord: any = {
+      schemaVersion: 1,
+      runId: "team-resume-loaded",
+      goal: "Resume interrupted run",
+      createdAt: "2026-04-27T00:00:00.000Z",
+      updatedAt: "2026-04-27T00:00:00.000Z",
+      status: "running",
+      options: { goal: "Resume interrupted run" },
+      tasks: [task],
+      events: [],
+      messages: [],
+    };
+
+    const summary = await runTeam(
+      {
+        goal: "Resume interrupted run",
+        resumeRunId: "team-resume-loaded",
+        staleTaskMs: 1_000,
+        resumeMode: "mark-interrupted",
+      },
+      {
+        now: () => "2026-04-27T00:01:00.000Z",
+        loadRun: async () => loadedRecord,
+        runTask: async () => {
+          throw new Error("interrupted resume tasks must not run without retry-stale");
+        },
+      },
+    );
+
+    expect(summary.success).toBe(false);
+    expect(summary.tasks[0].status).toBe("interrupted");
+    expect(summary.verificationEvidence.failed).toBe(true);
   });
 
   it("keeps the public run summary JSON-serializable with stable task and evidence fields", async () => {
@@ -208,5 +284,16 @@ describe("runTeam", () => {
     expect(formatted).toContain("artifactRefs: .pi/team/task-1.md");
     expect(formatted).toContain("worktreeRefs: /tmp/team-task-1");
     expect(formatted).toContain("MVP team mode uses dependency-free parallel-batch task records");
+  });
+});
+
+describe("resolveTeamWorktreePolicy", () => {
+  it("keeps the legacy boolean behavior while exposing explicit policy names", () => {
+    expect(resolveTeamWorktreePolicy({ worktree: true })).toBe(true);
+    expect(resolveTeamWorktreePolicy({ worktree: false })).toBe(false);
+    expect(resolveTeamWorktreePolicy({ worktree: false, worktreePolicy: "on" })).toBe(true);
+    expect(resolveTeamWorktreePolicy({ worktree: true, worktreePolicy: "off" })).toBe(false);
+    expect(resolveTeamWorktreePolicy({ worktree: true, worktreePolicy: "auto" })).toBe(true);
+    expect(resolveTeamWorktreePolicy({ worktree: false, worktreePolicy: "auto" })).toBe(false);
   });
 });

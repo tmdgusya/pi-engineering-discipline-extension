@@ -70,6 +70,7 @@ Example tool invocation shape:
   "workerCount": 2,
   "agent": "worker",
   "worktree": false,
+  "worktreePolicy": "off",
   "maxOutput": 6000
 }
 ```
@@ -82,27 +83,33 @@ Parameters:
 | `workerCount` | no | Number of workers to dispatch; defaults to a small batch and is clamped by the tool. |
 | `agent` | no | Worker agent name; defaults to `worker`. |
 | `worktree` | no | When `true`, asks the existing subagent runner to isolate worker edits in git worktrees. |
+| `worktreePolicy` | no | Explicit worktree isolation policy: `off`, `on`, or `auto`. Defaults to legacy `worktree` boolean behavior. |
 | `maxOutput` | no | Maximum characters of model-facing worker output retained in the final synthesis. |
+| `runId` | no | Optional durable run id for persisted team state. |
+| `resumeRunId` | no | Resume a previously persisted team run. |
+| `resumeMode` | no | Resume behavior for stale in-progress tasks: `mark-interrupted` or `retry-stale`. |
+| `staleTaskMs` | no | Age threshold for stale in-progress tasks during resume. |
 
 ### MVP behavior and stable summary contract
 
 - Creates dependency-free parallel-batch task records; this MVP is not a dependency scheduler.
 - Dispatches workers through the existing subagent process runner and preserves normal subagent depth/cycle safeguards.
 - Runs team workers with `PI_TEAM_WORKER=1`, which suppresses recursive orchestration tools such as `team` and `subagent` inside workers.
-- Returns a `TeamRunSummary` with stable user-facing fields: `goal`, `ok`/`success`, `completedCount`, `failedCount`, `tasks`, `summary`, and `verificationEvidence`.
+- Returns a `TeamRunSummary` with stable user-facing fields: `goal`, `ok`/`success`, `completedCount`, `failedCount`, `tasks`, `finalSynthesis`, and `verificationEvidence`.
 - Keeps each task's status, owner, output summary, artifact references, and worktree references when present.
+- Can persist durable run records under `.pi/agent/runs/<runId>/team-run.json`, including task lifecycle events and recorded inbox/outbox messages.
+- Can conservatively resume persisted runs by preserving terminal task state and marking stale in-progress tasks interrupted unless explicitly retried.
 - Reports the run as incomplete/failed when any worker fails; partial worker success must not be synthesized as full team success.
 
 ### Deferred parity milestones
 
 The lightweight native implementation intentionally defers heavier team-runtime features until they are implemented and tested:
 
-- Persistent team resume and recovery across sessions
-- Recorded worker inbox/outbox messaging
-- Heartbeat and status monitoring
+- Live worker chat/control beyond recorded inbox/outbox messages
+- Rich heartbeat/status dashboards beyond persisted run snapshots
 - Full staged pipelines such as plan → PRD → exec → verify → fix
 - tmux-pane worker runtime and live visualization
-- Default worktree-per-worker isolation policy
+- Default worktree-per-worker isolation policy; use `worktree`/`worktreePolicy` explicitly for now
 
 ### Verification and release checklist
 

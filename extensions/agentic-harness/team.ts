@@ -6,6 +6,7 @@ import {
   generateTeamRunId,
   markStaleRunningTasks,
   recordTeamEvent,
+  recordTeamMessage,
   setTeamRunStatus,
   type StaleTaskResumeMode,
   type TeamRunRecord,
@@ -30,6 +31,7 @@ export interface TeamTask {
   startedAt?: string;
   updatedAt?: string;
   completedAt?: string;
+  heartbeatAt?: string;
 }
 
 export interface TeamRunOptions {
@@ -37,11 +39,13 @@ export interface TeamRunOptions {
   workerCount?: number;
   agent?: string;
   worktree?: boolean;
+  worktreePolicy?: "off" | "on" | "auto";
   maxOutput?: number;
   runId?: string;
   resumeRunId?: string;
   resumeMode?: StaleTaskResumeMode;
   staleTaskMs?: number;
+  heartbeatMs?: number;
 }
 
 export interface TeamVerificationEvidence {
@@ -248,6 +252,13 @@ function terminalTaskStatus(status: TeamTaskStatus): boolean {
   return status === "completed" || status === "failed" || status === "blocked" || status === "interrupted";
 }
 
+export function resolveTeamWorktreePolicy(opts: Pick<TeamRunOptions, "worktree" | "worktreePolicy">): boolean {
+  if (opts.worktreePolicy === "on") return true;
+  if (opts.worktreePolicy === "off") return false;
+  if (opts.worktreePolicy === "auto") return !!opts.worktree;
+  return !!opts.worktree;
+}
+
 export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promise<TeamRunSummary> {
   const agentName = opts.agent || "worker";
   const now = runtime.now ?? (() => new Date().toISOString());
@@ -269,6 +280,7 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
   }
 
   const tasks = record.tasks;
+  const existingResults: SingleResult[] = [];
   try {
     validateTeamTasks(tasks);
   } catch (err) {
@@ -289,26 +301,54 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
   await persistIfEnabled(runtime, record);
 
   const runnableTasks = tasks.filter((task) => task.status === "pending");
+  const runWithWorktree = resolveTeamWorktreePolicy(opts);
   const results = await mapWithConcurrencyLimit(runnableTasks, MAX_CONCURRENCY, async (task, index) => {
     const startedAt = now();
     task.status = "in_progress";
     task.startedAt = task.startedAt || startedAt;
     task.updatedAt = startedAt;
+    task.heartbeatAt = startedAt;
     record = recordTeamEvent(record, { type: "task_started", taskId: task.id, createdAt: startedAt });
+    record = recordTeamMessage(record, {
+      taskId: task.id,
+      from: "leader",
+      to: task.owner,
+      kind: "inbox",
+      body: buildTeamWorkerPrompt(task, opts),
+      createdAt: startedAt,
+      deliveredAt: startedAt,
+    });
     await persistIfEnabled(runtime, record);
     runtime.emitProgress?.(synthesizeTeamRun(record.goal, tasks, [], opts.maxOutput));
-    const result = await runtime.runTask({
-      task,
-      prompt: buildTeamWorkerPrompt(task, opts),
-      agent: runtime.findAgent?.(task.agent),
-      agentName: task.agent,
-      worktree: opts.worktree,
-      maxOutput: opts.maxOutput,
-      extraEnv: {
-        [PI_TEAM_WORKER_ENV]: "1",
-        PI_SUBAGENT_MAX_DEPTH: "1",
-      },
-    }, index);
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    const heartbeatMs = opts.heartbeatMs ?? 15_000;
+    if (heartbeatMs > 0) {
+      heartbeat = setInterval(() => {
+        const heartbeatAt = now();
+        task.heartbeatAt = heartbeatAt;
+        task.updatedAt = heartbeatAt;
+        record = recordTeamEvent(record, { type: "task_heartbeat", taskId: task.id, createdAt: heartbeatAt });
+        void persistIfEnabled(runtime, record);
+      }, heartbeatMs);
+      heartbeat.unref?.();
+    }
+    let result: SingleResult;
+    try {
+      result = await runtime.runTask({
+        task,
+        prompt: buildTeamWorkerPrompt(task, opts),
+        agent: runtime.findAgent?.(task.agent),
+        agentName: task.agent,
+        worktree: runWithWorktree,
+        maxOutput: opts.maxOutput,
+        extraEnv: {
+          [PI_TEAM_WORKER_ENV]: "1",
+          PI_SUBAGENT_MAX_DEPTH: "1",
+        },
+      }, index);
+    } finally {
+      if (heartbeat) clearInterval(heartbeat);
+    }
 
     const summarize = runtime.summarizeResult ?? getResultSummaryText;
     task.resultSummary = summarize(result, opts.maxOutput);
@@ -318,6 +358,14 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
     const completedAt = now();
     task.updatedAt = completedAt;
     task.completedAt = completedAt;
+    record = recordTeamMessage(record, {
+      taskId: task.id,
+      from: task.owner,
+      to: "leader",
+      kind: isResultSuccess(result) ? "outbox" : "error",
+      body: task.resultSummary,
+      createdAt: completedAt,
+    });
     if (isResultSuccess(result)) {
       task.status = "completed";
       record = recordTeamEvent(record, { type: "task_completed", taskId: task.id, createdAt: completedAt });
@@ -331,7 +379,7 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
     return result;
   });
 
-  const summary = synthesizeTeamRun(record.goal, tasks, results, opts.maxOutput);
+  const summary = synthesizeTeamRun(record.goal, tasks, [...existingResults, ...results], opts.maxOutput);
   const finalStatus = summary.success
     ? "completed"
     : tasks.some((task) => task.status === "interrupted" || task.status === "in_progress")

@@ -19,6 +19,7 @@ import { complete } from "@mariozechner/pi-ai";
 import { isDisciplineAgent, augmentAgentWithKarpathy, getSlopCleanerTask } from "./discipline.js";
 import { fetchUrlToMarkdown } from "./webfetch/utils.js";
 import { PI_TEAM_WORKER_ENV, formatTeamRunSummary, runTeam } from "./team.js";
+import { defaultTeamRunStateRoot, readTeamRunRecord, writeTeamRunRecord } from "./team-state.js";
 import { renderWebfetchCall, renderWebfetchResult } from "./webfetch/render.js";
 import { getDefaultApprovalStore } from "./sandbox/approval-store.js";
 import { parseSandboxApprovalMode } from "./sandbox/approval-mode.js";
@@ -235,7 +236,20 @@ export default function (pi: ExtensionAPI) {
       default: "user",
     })),
     worktree: Type.Optional(Type.Boolean({ description: "Run team workers in isolated git worktrees" })),
+    worktreePolicy: Type.Optional(Type.Unsafe<"off" | "on" | "auto">({
+      type: "string",
+      enum: ["off", "on", "auto"],
+      description: "Worktree isolation policy. Defaults to the legacy worktree boolean behavior.",
+    })),
     maxOutput: Type.Optional(Type.Number({ description: "Maximum characters of model-facing worker output to retain" })),
+    runId: Type.Optional(Type.String({ description: "Optional durable team run id for persisted state" })),
+    resumeRunId: Type.Optional(Type.String({ description: "Resume a previously persisted team run id" })),
+    resumeMode: Type.Optional(Type.Unsafe<"mark-interrupted" | "retry-stale">({
+      type: "string",
+      enum: ["mark-interrupted", "retry-stale"],
+      description: "How to handle stale in-progress tasks when resuming.",
+    })),
+    staleTaskMs: Type.Optional(Type.Number({ description: "Age in milliseconds before in-progress resume tasks are stale" })),
   });
 
   if (isRootSession && !isTeamWorker) {
@@ -254,8 +268,9 @@ export default function (pi: ExtensionAPI) {
       renderCall: (args, theme) => renderCall(args, theme),
       renderResult: (result, { expanded }, theme) => renderResult(result, expanded, theme),
       execute: async (_toolCallId, params, signal, onUpdate, ctx) => {
-        const { goal, workerCount, agent, agentScope, worktree, maxOutput } = params;
+        const { goal, workerCount, agent, agentScope, worktree, worktreePolicy, maxOutput, runId, resumeRunId, resumeMode, staleTaskMs } = params;
         const defaultCwd = ctx.cwd;
+        const teamRunStateRoot = defaultTeamRunStateRoot(defaultCwd);
         const hasUI = (ctx as any).hasUI !== false && !!ctx?.ui?.select;
         const agents = await discoverAgents(defaultCwd, agentScope || "user", BUNDLED_AGENTS_DIR);
         const findAgent = (name: string) => agents.find((a) => a.name === name);
@@ -284,9 +299,13 @@ export default function (pi: ExtensionAPI) {
           approvalStore,
           requireApprovalForAllCommands: true,
         });
-        const summary = await runTeam({ goal, workerCount, agent, worktree, maxOutput }, {
+        const summary = await runTeam({ goal, workerCount, agent, worktree, worktreePolicy, maxOutput, runId, resumeRunId, resumeMode, staleTaskMs }, {
           findAgent,
           summarizeResult: getResultSummaryText,
+          persistRun: async (record) => {
+            await writeTeamRunRecord(record, teamRunStateRoot);
+          },
+          loadRun: (id) => readTeamRunRecord(id, teamRunStateRoot),
           emitProgress: (partial) => onUpdate?.({
             content: [{ type: "text" as const, text: `Team: ${partial.completedCount}/${partial.taskCount} completed, ${partial.failedCount} failed...` }],
             details: makeDetails("parallel")([]),
