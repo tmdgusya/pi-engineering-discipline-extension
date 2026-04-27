@@ -71,6 +71,7 @@ Example tool invocation shape:
   "agent": "worker",
   "worktree": false,
   "worktreePolicy": "off",
+  "backend": "auto",
   "maxOutput": 6000
 }
 ```
@@ -84,6 +85,7 @@ Parameters:
 | `agent` | no | Worker agent name; defaults to `worker`. |
 | `worktree` | no | When `true`, asks the existing subagent runner to isolate worker edits in git worktrees. |
 | `worktreePolicy` | no | Explicit worktree isolation policy: `off`, `on`, or `auto`. Defaults to legacy `worktree` boolean behavior. |
+| `backend` | no | Execution backend selection: `auto`, `native`, or `tmux`. Defaults to `auto`. |
 | `maxOutput` | no | Maximum characters of model-facing worker output retained in the final synthesis. |
 | `runId` | no | Optional durable run id for persisted team state. |
 | `resumeRunId` | no | Resume a previously persisted team run. |
@@ -93,7 +95,12 @@ Parameters:
 ### MVP behavior and stable summary contract
 
 - Creates dependency-free parallel-batch task records; this MVP is not a dependency scheduler.
-- Dispatches workers through the existing subagent process runner and preserves normal subagent depth/cycle safeguards.
+- `backend: "auto"` (default) prefers tmux when the binary is available and otherwise falls back to the native JSON subprocess backend.
+- `backend: "native"` uses the existing JSON subprocess backend without tmux.
+- `backend: "tmux"` requires tmux and records attach metadata for each worker pane.
+- Attach to a tmux-backed run with `tmux attach -t <session>`; summaries and task metadata include the concrete attach command.
+- Operator interaction happens through tmux attach/switch-pane, not through a new pi-side control channel.
+- Dispatches workers through the selected backend and preserves normal subagent depth/cycle safeguards.
 - Runs team workers with `PI_TEAM_WORKER=1`, which suppresses recursive orchestration tools such as `team` and `subagent` inside workers.
 - Returns a `TeamRunSummary` with stable user-facing fields: `goal`, `ok`/`success`, `completedCount`, `failedCount`, `tasks`, `finalSynthesis`, and `verificationEvidence`.
 - Keeps each task's status, owner, output summary, artifact references, and worktree references when present.
@@ -103,12 +110,12 @@ Parameters:
 
 ### Deferred parity milestones
 
-The lightweight native implementation intentionally defers heavier team-runtime features until they are implemented and tested:
+The lightweight team implementation intentionally defers heavier team-runtime features until they are implemented and tested:
 
 - Live worker chat/control beyond recorded inbox/outbox messages
 - Rich heartbeat/status dashboards beyond persisted run snapshots
 - Full staged pipelines such as plan → PRD → exec → verify → fix
-- tmux-pane worker runtime and live visualization
+- In-pi pane embedding and direct pi-side keystroke routing to workers
 - Default worktree-per-worker isolation policy; use `worktree`/`worktreePolicy` explicitly for now
 
 ### Verification and release checklist

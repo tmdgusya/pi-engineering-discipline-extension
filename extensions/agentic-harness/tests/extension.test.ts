@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, afterAll, describe, it, expect, vi } from "vitest";
 
 vi.mock("@mariozechner/pi-coding-agent", () => ({
@@ -155,6 +156,11 @@ describe("Extension Registration", () => {
       enum: ["auto", "native", "tmux"],
       description: "Execution backend selection for team workers. auto prefers tmux when available.",
     });
+    expect(schema.properties.backend.enum).toEqual(["auto", "native", "tmux"]);
+    expect(tool.description).toContain("lightweight native team");
+    const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+    expect(readme).toContain('`backend: "auto"` (default) prefers tmux when the binary is available and otherwise falls back to the native JSON subprocess backend.');
+    expect(readme).toContain("tmux attach -t <session>");
     expect(schema.properties.maxOutput).toBeDefined();
     expect(schema.properties.runId).toBeDefined();
     expect(schema.properties.resumeRunId).toBeDefined();
