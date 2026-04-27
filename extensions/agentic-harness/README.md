@@ -57,11 +57,12 @@ Then use the slash commands:
 The `ask_user_question` tool is also available to the agent at all times — it will ask you questions autonomously whenever it detects ambiguity, even outside of `/clarify` mode.
 
 
+
 ## Lightweight Native Team Mode
 
-The `team` tool coordinates a small batch of existing pi subagents from the root session. Use it when a goal can be split into independent worker assignments and you want one synthesized result with explicit verification evidence.
+The `team` tool coordinates a small, bounded batch of existing pi subagents from the root session. Use it when a goal can be split into independent worker assignments and you want one synthesized result with task lifecycle status and explicit verification evidence. Use `subagent` directly for one-off delegation when you do not need team task records, lifecycle status, or final synthesis.
 
-Example tool request:
+Example tool invocation shape:
 
 ```json
 {
@@ -73,30 +74,37 @@ Example tool request:
 }
 ```
 
-MVP behavior:
+Parameters:
 
-- Creates a bounded parallel batch of dependency-free task records; it is not a full dependency scheduler.
-- Dispatches workers through the existing subagent process runner and preserves the normal subagent depth/cycle safeguards.
+| Field | Required | Notes |
+|---|---:|---|
+| `goal` | yes | Root-level objective to split into dependency-free worker tasks. |
+| `workerCount` | no | Number of workers to dispatch; defaults to a small batch and is clamped by the tool. |
+| `agent` | no | Worker agent name; defaults to `worker`. |
+| `worktree` | no | When `true`, asks the existing subagent runner to isolate worker edits in git worktrees. |
+| `maxOutput` | no | Maximum characters of model-facing worker output retained in the final synthesis. |
+
+### MVP behavior and stable summary contract
+
+- Creates dependency-free parallel-batch task records; this MVP is not a dependency scheduler.
+- Dispatches workers through the existing subagent process runner and preserves normal subagent depth/cycle safeguards.
 - Runs team workers with `PI_TEAM_WORKER=1`, which suppresses recursive orchestration tools such as `team` and `subagent` inside workers.
-- Returns per-task status, owner, output summaries, artifact/worktree references when present, and structured verification evidence.
-- Reports the run as incomplete/failed when any worker fails; the synthesis must not describe partial work as full success.
-
-Use `subagent` directly for simple one-off parallel dispatch where you do not need team task records, lifecycle status, or final verification synthesis.
+- Returns a `TeamRunSummary` with stable user-facing fields: `goal`, `ok`/`success`, `completedCount`, `failedCount`, `tasks`, `summary`, and `verificationEvidence`.
+- Keeps each task's status, owner, output summary, artifact references, and worktree references when present.
+- Reports the run as incomplete/failed when any worker fails; partial worker success must not be synthesized as full team success.
 
 ### Deferred parity milestones
 
-The lightweight native implementation intentionally defers heavier team-runtime features:
+The lightweight native implementation intentionally defers heavier team-runtime features until they are implemented and tested:
 
 - Persistent team resume and recovery across sessions
-- Worker inbox/outbox messaging
+- Recorded worker inbox/outbox messaging
 - Heartbeat and status monitoring
 - Full staged pipelines such as plan → PRD → exec → verify → fix
-- tmux-pane worker runtime
-- Default worktree-per-worker isolation
+- tmux-pane worker runtime and live visualization
+- Default worktree-per-worker isolation policy
 
-These are future parity milestones, not MVP requirements.
-
-### Verification checklist
+### Verification and release checklist
 
 Before declaring a team-mode change complete, run from `extensions/agentic-harness`:
 
@@ -105,7 +113,7 @@ npm test
 npm run build
 ```
 
-The test suite should cover task creation, worker prompt guardrails, success/failure synthesis, runtime suppression under `PI_TEAM_WORKER=1`, tool registration, and a fake-runner e2e path. The build must pass with `tsc --noEmit`.
+There is currently no `lint` script in `extensions/agentic-harness/package.json`; use the test/build gate plus manual docs review unless a lint script is added later. The test suite should cover task creation, worker prompt guardrails, worker-count clamping, success/failure synthesis, runtime suppression under `PI_TEAM_WORKER=1`, root tool registration, and the fake-runner e2e path. The build must pass with `tsc --noEmit`.
 
 ## Development
 
@@ -123,39 +131,8 @@ The test suite should cover task creation, worker prompt guardrails, success/fai
 ## Testing
 
 ```bash
-npm run test
+npm test
+npm run build
 ```
 
-12 tests covering tool registration, command delegation, event handlers, and ask_user_question behavior (free-text, multi-choice, direct input fallback, cancellation).
-
-## Lightweight Native Team Mode
-
-The `team` tool coordinates a small, bounded group of existing pi subagents without requiring a tmux worker runtime. It is only available in the root session. A team run accepts a `goal`, optional `workerCount`, optional worker `agent` (default: `worker`), optional `worktree`, and optional `maxOutput`.
-
-Example tool invocation shape:
-
-```json
-{
-  "goal": "Implement a focused feature and verify it",
-  "workerCount": 2,
-  "agent": "worker",
-  "worktree": true
-}
-```
-
-MVP behavior:
-
-- The goal is decomposed into dependency-free parallel-batch task records.
-- Each worker receives explicit lead/worker separation instructions and must report changed files, verification, and blockers.
-- Team workers run with `PI_TEAM_WORKER=1`; recursive orchestration tools such as `team` and `subagent` are suppressed in that context.
-- The final result includes per-task status, success/failure counts, worker output summaries, and structured verification evidence.
-- If any worker fails, the team run is reported as failed/partial rather than full success.
-
-Deferred parity milestones:
-
-- persistent resume and file-backed run recovery
-- worker inbox/outbox messaging
-- heartbeat/status monitoring
-- full staged team pipeline (`plan -> prd -> exec -> verify -> fix`)
-- tmux pane runtime/visualization
-- default worktree-per-worker orchestration policy
+The extension test suite covers command delegation, event handlers, ask_user_question behavior, subagent/team registration, and lightweight team-mode synthesis. `npm run build` runs `tsc --noEmit`.

@@ -31,8 +31,9 @@ npm run build
 
 Expected result:
 
-- `npm test` passes all unit, registration, and e2e-style fake-runner tests.
+- `npm test` passes all unit, registration, and e2e-style fake-runner tests. Baseline evidence from the planning lane was 30 test files / 276 tests passing; update this count after final integration if it changes.
 - `npm run build` passes TypeScript compilation (`tsc --noEmit`).
+- Lint status is explicit: there is currently no `lint` script in `extensions/agentic-harness/package.json`; do not report a lint gate as passing unless a script is added and run.
 
 ## Test coverage map
 
@@ -46,5 +47,16 @@ Expected result:
 
 - Confirm no new third-party dependencies were added for team mode.
 - Confirm existing `subagent` behavior remains stable outside team-worker context.
-- Confirm README deferred parity list includes persistent resume, worker inbox/outbox, heartbeat/status monitoring, staged pipelines, tmux runtime, and default worktree-per-worker isolation.
+- Confirm `extensions/agentic-harness/README.md` contains exactly one `## Lightweight Native Team Mode` section.
+- Confirm README deferred parity list includes persistent resume, recorded worker inbox/outbox, heartbeat/status monitoring, staged pipelines, tmux runtime/live visualization, and default worktree-per-worker isolation.
+- Confirm the release PR uses a conventional commit type matching the actual change (`feat(agentic-harness)`, `test(agentic-harness)`, `docs(agentic-harness)`, or `ci`).
 - Confirm no final report claims full success without the command output above.
+
+## Latest worker-4 docs/release verification
+
+Working directory: `/Users/lit/.pi/agent/git/github.com/tmdgusya/roach-pi/.omx/team/implement-the-remaining-roach/worktrees/worker-4`
+
+- PASS — `grep -n "^## Lightweight Native Team Mode" extensions/agentic-harness/README.md` returned one section at line 61.
+- PASS — `cd extensions/agentic-harness && npm test` passed 30 test files / 276 tests.
+- PASS — `cd extensions/agentic-harness && npm run build` passed TypeScript compilation (`tsc --noEmit`).
+- Lint — no `lint` script exists in `extensions/agentic-harness/package.json`; lint gate remains not applicable for this branch.
