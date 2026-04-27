@@ -56,6 +56,57 @@ Then use the slash commands:
 
 The `ask_user_question` tool is also available to the agent at all times — it will ask you questions autonomously whenever it detects ambiguity, even outside of `/clarify` mode.
 
+
+## Lightweight Native Team Mode
+
+The `team` tool coordinates a small batch of existing pi subagents from the root session. Use it when a goal can be split into independent worker assignments and you want one synthesized result with explicit verification evidence.
+
+Example tool request:
+
+```json
+{
+  "goal": "Implement the API client and update its tests",
+  "workerCount": 2,
+  "agent": "worker",
+  "worktree": false,
+  "maxOutput": 6000
+}
+```
+
+MVP behavior:
+
+- Creates a bounded parallel batch of dependency-free task records; it is not a full dependency scheduler.
+- Dispatches workers through the existing subagent process runner and preserves the normal subagent depth/cycle safeguards.
+- Runs team workers with `PI_TEAM_WORKER=1`, which suppresses recursive orchestration tools such as `team` and `subagent` inside workers.
+- Returns per-task status, owner, output summaries, artifact/worktree references when present, and structured verification evidence.
+- Reports the run as incomplete/failed when any worker fails; the synthesis must not describe partial work as full success.
+
+Use `subagent` directly for simple one-off parallel dispatch where you do not need team task records, lifecycle status, or final verification synthesis.
+
+### Deferred parity milestones
+
+The lightweight native implementation intentionally defers heavier team-runtime features:
+
+- Persistent team resume and recovery across sessions
+- Worker inbox/outbox messaging
+- Heartbeat and status monitoring
+- Full staged pipelines such as plan → PRD → exec → verify → fix
+- tmux-pane worker runtime
+- Default worktree-per-worker isolation
+
+These are future parity milestones, not MVP requirements.
+
+### Verification checklist
+
+Before declaring a team-mode change complete, run from `extensions/agentic-harness`:
+
+```bash
+npm test
+npm run build
+```
+
+The test suite should cover task creation, worker prompt guardrails, success/failure synthesis, runtime suppression under `PI_TEAM_WORKER=1`, tool registration, and a fake-runner e2e path. The build must pass with `tsc --noEmit`.
+
 ## Development
 
 1. Clone the repository:
