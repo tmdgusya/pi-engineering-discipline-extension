@@ -251,6 +251,8 @@ export default function (pi: ExtensionAPI) {
         "Use subagent directly for simple one-off parallel dispatch without team synthesis.",
       ],
       parameters: TeamParams,
+      renderCall: (args, theme) => renderCall(args, theme),
+      renderResult: (result, { expanded }, theme) => renderResult(result, expanded, theme),
       execute: async (_toolCallId, params, signal, onUpdate, ctx) => {
         const { goal, workerCount, agent, agentScope, worktree, maxOutput } = params;
         const defaultCwd = ctx.cwd;

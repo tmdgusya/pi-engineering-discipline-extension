@@ -30,8 +30,10 @@ export interface TeamRunOptions {
 
 export interface TeamVerificationEvidence {
   checksRun: string[];
-  passed: string[];
-  failed: string[];
+  passed: boolean;
+  failed: boolean;
+  passedChecks: string[];
+  failedChecks: string[];
   artifactRefs: string[];
   worktreeRefs: string[];
   notes: string[];
@@ -44,6 +46,7 @@ export interface TeamRunSummary {
   failedCount: number;
   blockedCount: number;
   success: boolean;
+  ok: boolean;
   tasks: TeamTask[];
   finalSynthesis: string;
   verificationEvidence: TeamVerificationEvidence;
@@ -60,17 +63,17 @@ export interface TeamRunTaskInput {
 }
 
 export interface TeamRuntime {
-  findAgent(name: string): AgentConfig | undefined;
+  findAgent?(name: string): AgentConfig | undefined;
   runTask(input: TeamRunTaskInput, index: number): Promise<SingleResult>;
   summarizeResult?(result: SingleResult, maxOutput?: number): string;
   emitProgress?(summary: TeamRunSummary): void;
 }
 
 const WORKER_PROTOCOL = [
-  "You are a team worker, not the team leader.",
+  "You are a team worker, not the leader.",
   "Execute only the bounded assignment below; do not rewrite the global plan.",
   "Do not spawn subagents or delegate to other agents.",
-  "Do not run team, ultrawork, autopilot, ralph, or other orchestration commands.",
+  "Do not run team/ultrawork/autopilot/ralph or other orchestration commands.",
   "If blocked, report the blocker clearly instead of widening scope.",
   "Before finishing, report changed files, verification performed, and remaining blockers.",
 ].join("\n- ");
@@ -102,6 +105,13 @@ export function createDefaultTeamTasks(goal: string, workerCount?: number, agent
   });
 }
 
+export function validateTeamTasks(tasks: TeamTask[]): void {
+  const blocked = tasks.find((task) => task.blockedBy.length > 0);
+  if (blocked) {
+    throw new Error(`blockedBy dependencies are not supported by the MVP parallel batch scheduler: ${blocked.id}`);
+  }
+}
+
 export function buildTeamWorkerPrompt(task: TeamTask, opts: TeamRunOptions): string {
   return [
     "# Team Worker Assignment",
@@ -131,7 +141,7 @@ function taskRefs(result: SingleResult): { artifactRefs: string[]; worktreeRefs:
     result.artifacts?.progressFile,
     ...(result.artifacts?.readFiles ?? []),
   ].filter((value): value is string => !!value);
-  const worktreeRefs = [result.worktree?.worktreePath, result.worktree?.worktreeDiffFile]
+  const worktreeRefs = [result.worktree?.worktreePath]
     .filter((value): value is string => !!value);
   return { artifactRefs, worktreeRefs };
 }
@@ -139,17 +149,19 @@ function taskRefs(result: SingleResult): { artifactRefs: string[]; worktreeRefs:
 function createEvidence(tasks: TeamTask[], results: SingleResult[]): TeamVerificationEvidence {
   const artifactRefs = tasks.flatMap((task) => task.artifactRefs);
   const worktreeRefs = tasks.flatMap((task) => task.worktreeRefs);
-  const passed = tasks
+  const passedChecks = tasks
     .filter((task) => task.status === "completed")
     .map((task) => `${task.id}: worker completed`);
-  const failed = tasks
+  const failedChecks = tasks
     .filter((task) => task.status === "failed" || task.status === "blocked")
     .map((task) => `${task.id}: ${task.errorMessage || task.status}`);
   const checksRun = results.map((result, index) => `${tasks[index]?.id ?? `task-${index + 1}`}: pi worker execution`);
   return {
     checksRun,
-    passed,
-    failed,
+    passed: failedChecks.length === 0 && tasks.length > 0 && passedChecks.length === tasks.length,
+    failed: failedChecks.length > 0,
+    passedChecks,
+    failedChecks,
     artifactRefs,
     worktreeRefs,
     notes: [
@@ -177,6 +189,7 @@ export function synthesizeTeamRun(goal: string, tasks: TeamTask[], results: Sing
     failedCount,
     blockedCount,
     success,
+    ok: success,
     tasks,
     finalSynthesis: [
       `Team ${success ? "completed" : "finished with failures"}: ${completedCount}/${tasks.length} completed for goal: ${goal}`,
@@ -184,8 +197,8 @@ export function synthesizeTeamRun(goal: string, tasks: TeamTask[], results: Sing
       "",
       "Verification evidence:",
       `- checksRun: ${verificationEvidence.checksRun.length}`,
-      `- passed: ${verificationEvidence.passed.length}`,
-      `- failed: ${verificationEvidence.failed.length}`,
+      `- passed: ${verificationEvidence.passed}`,
+      `- failed: ${verificationEvidence.failed}`,
     ].join("\n"),
     verificationEvidence,
   };
@@ -198,8 +211,8 @@ export function formatTeamRunSummary(summary: TeamRunSummary): string {
     "",
     "Structured verification evidence:",
     `- checksRun: ${evidence.checksRun.join("; ") || "none"}`,
-    `- passed: ${evidence.passed.join("; ") || "none"}`,
-    `- failed: ${evidence.failed.join("; ") || "none"}`,
+    `- passed: ${evidence.passed} (${evidence.passedChecks.join("; ") || "none"})`,
+    `- failed: ${evidence.failed} (${evidence.failedChecks.join("; ") || "none"})`,
     `- artifactRefs: ${evidence.artifactRefs.join("; ") || "none"}`,
     `- worktreeRefs: ${evidence.worktreeRefs.join("; ") || "none"}`,
     `- notes: ${evidence.notes.join("; ") || "none"}`,
@@ -209,10 +222,14 @@ export function formatTeamRunSummary(summary: TeamRunSummary): string {
 export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promise<TeamRunSummary> {
   const agentName = opts.agent || "worker";
   const tasks = createDefaultTeamTasks(opts.goal, opts.workerCount, agentName);
-  const invalidDependency = tasks.find((task) => task.blockedBy.length > 0);
-  if (invalidDependency) {
-    invalidDependency.status = "blocked";
-    invalidDependency.errorMessage = "MVP team mode only supports dependency-free parallel batches.";
+  try {
+    validateTeamTasks(tasks);
+  } catch (err) {
+    const invalidDependency = tasks.find((task) => task.blockedBy.length > 0);
+    if (invalidDependency) {
+      invalidDependency.status = "blocked";
+      invalidDependency.errorMessage = err instanceof Error ? err.message : "MVP team mode only supports dependency-free parallel batches.";
+    }
     return synthesizeTeamRun(opts.goal, tasks, [], opts.maxOutput);
   }
 
@@ -222,7 +239,7 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
     const result = await runtime.runTask({
       task,
       prompt: buildTeamWorkerPrompt(task, opts),
-      agent: runtime.findAgent(task.agent),
+      agent: runtime.findAgent?.(task.agent),
       agentName: task.agent,
       worktree: opts.worktree,
       maxOutput: opts.maxOutput,
