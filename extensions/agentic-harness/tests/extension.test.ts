@@ -30,6 +30,7 @@ const originalSubagentEnv = {
   PI_SUBAGENT_MAX_DEPTH: process.env.PI_SUBAGENT_MAX_DEPTH,
   PI_SUBAGENT_STACK: process.env.PI_SUBAGENT_STACK,
   PI_SUBAGENT_PREVENT_CYCLES: process.env.PI_SUBAGENT_PREVENT_CYCLES,
+  PI_TEAM_WORKER: process.env.PI_TEAM_WORKER,
 };
 
 beforeEach(() => {
@@ -37,6 +38,7 @@ beforeEach(() => {
   delete process.env.PI_SUBAGENT_MAX_DEPTH;
   delete process.env.PI_SUBAGENT_STACK;
   delete process.env.PI_SUBAGENT_PREVENT_CYCLES;
+  delete process.env.PI_TEAM_WORKER;
 });
 
 afterAll(() => {
@@ -106,6 +108,43 @@ describe("Extension Registration", () => {
     expect(tool.promptGuidelines.length).toBe(8);
     expect(tool.renderCall).toBeTypeOf("function");
     expect(tool.renderResult).toBeTypeOf("function");
+  });
+
+  it("should register team tool in root session", () => {
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    const tool = tools.get("team");
+    expect(tool).toBeDefined();
+    expect(tool.name).toBe("team");
+    expect(tool.promptSnippet).toBeDefined();
+    expect(tool.promptGuidelines).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("coordinated multi-agent execution"),
+        expect.stringContaining("Workers must not recursively orchestrate"),
+      ]),
+    );
+    expect(tool.renderCall).toBeTypeOf("function");
+    expect(tool.renderResult).toBeTypeOf("function");
+  });
+
+  it("should NOT register team tool in subagent context", () => {
+    process.env.PI_SUBAGENT_DEPTH = "1";
+
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    expect(tools.get("team")).toBeUndefined();
+  });
+
+  it("should NOT register recursive orchestration tools in team-worker context", () => {
+    process.env.PI_TEAM_WORKER = "1";
+
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    expect(tools.get("team")).toBeUndefined();
+    expect(tools.get("subagent")).toBeUndefined();
   });
 
   it("should register all root-session commands", () => {
