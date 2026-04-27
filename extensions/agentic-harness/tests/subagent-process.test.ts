@@ -54,6 +54,261 @@ afterEach(() => {
 });
 
 describe.runIf(process.platform !== "win32")("runAgent process ownership", () => {
+  it("does not complete from a stale tmux exit marker", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "subagent-process-tmux-stale-"));
+    tempDirs.push(tempDir);
+    const fakeTmux = join(tempDir, "tmux");
+    const logFile = join(tempDir, "pane.log");
+    const runnerScript = join(tempDir, "runner.mjs");
+    writeFileSync(logFile, "old output\n__PI_TMUX_EXIT:77\n");
+    writeFileSync(runnerScript, [
+      "const message = { role: 'assistant', content: [{ type: 'text', text: 'fresh tmux result' }] };",
+      "console.log(JSON.stringify({ type: 'message_end', message }));",
+      "console.log(JSON.stringify({ type: 'agent_end', messages: [message] }));",
+    ].join("\n"));
+    writeFileSync(fakeTmux, [
+      "#!/usr/bin/env node",
+      "const { spawnSync } = require('child_process');",
+      "const { appendFileSync } = require('fs');",
+      "const args = process.argv.slice(2);",
+      "if (args[0] === 'send-keys') {",
+      "  const command = args[args.length - 2];",
+      "  const result = spawnSync('/bin/sh', ['-lc', command], { encoding: 'utf8' });",
+      `  appendFileSync(${JSON.stringify(logFile)}, (result.stdout || '') + (result.stderr || ''));`,
+      "  process.exit(result.status ?? 0);",
+      "}",
+      "process.exit(0);",
+    ].join("\n"));
+    chmodSync(fakeTmux, 0o755);
+
+    process.argv = [process.execPath, runnerScript];
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${tempDir}:${originalPath || ""}`;
+    try {
+      const result = await runAgent({
+        agent: {
+          name: "fixture",
+          description: "fixture agent",
+          filePath: runnerScript,
+          source: "project",
+          systemPrompt: "",
+          tools: [],
+        },
+        agentName: "fixture",
+        task: "tmux-stale",
+        cwd: tempDir,
+        depthConfig: resolveDepthConfig(),
+        ownership: { runId: "tmux-stale-run", owner: "test-suite" },
+        executionMode: "tmux",
+        tmuxPane: {
+          sessionName: "pi-team-run-stale",
+          windowName: "workers",
+          paneId: "%1",
+          logFile,
+          attachCommand: "tmux attach -t pi-team-run-stale",
+        },
+        makeDetails: (results) => ({ mode: "single", results }),
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.messages.at(-1)?.content?.[0]?.text).toContain("fresh tmux result");
+      expect(readFileSync(logFile, "utf8")).not.toContain("__PI_TMUX_EXIT:77");
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
+  it("does not duplicate tmux log writes with tee", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "subagent-process-tmux-tee-"));
+    tempDirs.push(tempDir);
+    const fakeTmux = join(tempDir, "tmux");
+    const logFile = join(tempDir, "pane.log");
+    const commandFile = join(tempDir, "command.txt");
+    const runnerScript = join(tempDir, "runner.mjs");
+    writeFileSync(runnerScript, "console.log('not executed');\n");
+    writeFileSync(fakeTmux, [
+      "#!/usr/bin/env node",
+      "const { writeFileSync, appendFileSync } = require('fs');",
+      "const args = process.argv.slice(2);",
+      "if (args[0] === 'send-keys') {",
+      "  const command = args[args.length - 2];",
+      `  writeFileSync(${JSON.stringify(commandFile)}, command);`,
+      `  appendFileSync(${JSON.stringify(logFile)}, "__PI_TMUX_EXIT:0\\n");`,
+      "}",
+      "process.exit(0);",
+    ].join("\n"));
+    chmodSync(fakeTmux, 0o755);
+
+    process.argv = [process.execPath, runnerScript];
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${tempDir}:${originalPath || ""}`;
+    try {
+      const result = await runAgent({
+        agent: {
+          name: "fixture",
+          description: "fixture agent",
+          filePath: runnerScript,
+          source: "project",
+          systemPrompt: "",
+          tools: [],
+        },
+        agentName: "fixture",
+        task: "tmux-no-tee",
+        cwd: tempDir,
+        depthConfig: resolveDepthConfig(),
+        ownership: { runId: "tmux-no-tee-run", owner: "test-suite" },
+        executionMode: "tmux",
+        tmuxPane: {
+          sessionName: "pi-team-run-no-tee",
+          windowName: "workers",
+          paneId: "%1",
+          logFile,
+          attachCommand: "tmux attach -t pi-team-run-no-tee",
+        },
+        makeDetails: (results) => ({ mode: "single", results }),
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(readFileSync(commandFile, "utf8")).not.toContain("tee -a");
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
+  it("uses tmux log tail text for non-zero failures", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "subagent-process-tmux-failure-"));
+    tempDirs.push(tempDir);
+    const fakeTmux = join(tempDir, "tmux");
+    const logFile = join(tempDir, "pane.log");
+    const runnerScript = join(tempDir, "runner.mjs");
+    writeFileSync(runnerScript, "console.error('tmux exploded');\nprocess.exit(7);\n");
+    writeFileSync(fakeTmux, [
+      "#!/usr/bin/env node",
+      "const { spawnSync } = require('child_process');",
+      "const { appendFileSync } = require('fs');",
+      "const args = process.argv.slice(2);",
+      "if (args[0] === 'send-keys') {",
+      "  const command = args[args.length - 2];",
+      "  const result = spawnSync('/bin/sh', ['-lc', command], { encoding: 'utf8' });",
+      `  appendFileSync(${JSON.stringify(logFile)}, (result.stdout || '') + (result.stderr || ''));`,
+      "  process.exit(result.status ?? 0);",
+      "}",
+      "process.exit(0);",
+    ].join("\n"));
+    chmodSync(fakeTmux, 0o755);
+
+    process.argv = [process.execPath, runnerScript];
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${tempDir}:${originalPath || ""}`;
+    try {
+      const result = await runAgent({
+        agent: {
+          name: "fixture",
+          description: "fixture agent",
+          filePath: runnerScript,
+          source: "project",
+          systemPrompt: "",
+          tools: [],
+        },
+        agentName: "fixture",
+        task: "tmux-failure",
+        cwd: tempDir,
+        depthConfig: resolveDepthConfig(),
+        ownership: { runId: "tmux-failure-run", owner: "test-suite" },
+        executionMode: "tmux",
+        tmuxPane: {
+          sessionName: "pi-team-run-failure",
+          windowName: "workers",
+          paneId: "%1",
+          logFile,
+          attachCommand: "tmux attach -t pi-team-run-failure",
+        },
+        makeDetails: (results) => ({ mode: "single", results }),
+      });
+
+      expect(result.exitCode).toBe(7);
+      expect(result.stderr || result.errorMessage).toContain("tmux exploded");
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
+  it("emits tmux lifecycle events with terminal metadata", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "subagent-process-tmux-lifecycle-"));
+    tempDirs.push(tempDir);
+    const fakeTmux = join(tempDir, "tmux");
+    const logFile = join(tempDir, "pane.log");
+    const processLog = join(tempDir, "process.log");
+    const runnerScript = join(tempDir, "runner.mjs");
+    const lifecycleEvents: any[] = [];
+    writeFileSync(runnerScript, [
+      "const message = { role: 'assistant', content: [{ type: 'text', text: 'lifecycle done' }] };",
+      "console.log(JSON.stringify({ type: 'message_end', message }));",
+      "console.log(JSON.stringify({ type: 'agent_end', messages: [message] }));",
+    ].join("\n"));
+    writeFileSync(fakeTmux, [
+      "#!/usr/bin/env node",
+      "const { spawnSync } = require('child_process');",
+      "const { appendFileSync } = require('fs');",
+      "const args = process.argv.slice(2);",
+      "if (args[0] === 'send-keys') {",
+      "  const command = args[args.length - 2];",
+      "  const result = spawnSync('/bin/sh', ['-lc', command], { encoding: 'utf8' });",
+      `  appendFileSync(${JSON.stringify(logFile)}, (result.stdout || '') + (result.stderr || ''));`,
+      "  process.exit(result.status ?? 0);",
+      "}",
+      "process.exit(0);",
+    ].join("\n"));
+    chmodSync(fakeTmux, 0o755);
+
+    process.argv = [process.execPath, runnerScript];
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${tempDir}:${originalPath || ""}`;
+    try {
+      const result = await runAgent({
+        agent: {
+          name: "fixture",
+          description: "fixture agent",
+          filePath: runnerScript,
+          source: "project",
+          systemPrompt: "",
+          tools: [],
+        },
+        agentName: "fixture",
+        task: "tmux-lifecycle",
+        cwd: tempDir,
+        depthConfig: resolveDepthConfig(),
+        ownership: { runId: "tmux-lifecycle-run", owner: "test-suite" },
+        extraEnv: {
+          PI_SUBAGENT_PROCESS_LOG: processLog,
+        },
+        executionMode: "tmux",
+        tmuxPane: {
+          sessionName: "pi-team-run-lifecycle",
+          windowName: "workers",
+          paneId: "%1",
+          logFile,
+          attachCommand: "tmux attach -t pi-team-run-lifecycle",
+        },
+        onLifecycleEvent: (event) => lifecycleEvents.push(event),
+        makeDetails: (results) => ({ mode: "single", results }),
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(lifecycleEvents).toEqual(expect.arrayContaining([
+        expect.objectContaining({ phase: "spawned", backend: "tmux", sessionName: "pi-team-run-lifecycle", paneId: "%1" }),
+        expect.objectContaining({ phase: "closed", backend: "tmux", sessionName: "pi-team-run-lifecycle", paneId: "%1", exitCode: 0 }),
+      ]));
+      const loggedEvents = readFileSync(processLog, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+      expect(loggedEvents).toEqual(expect.arrayContaining([
+        expect.objectContaining({ phase: "spawned", backend: "tmux", sessionName: "pi-team-run-lifecycle", paneId: "%1" }),
+        expect.objectContaining({ phase: "closed", backend: "tmux", sessionName: "pi-team-run-lifecycle", paneId: "%1", exitCode: 0 }),
+      ]));
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
   it("runs a worker command through a provided tmux pane log", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "subagent-process-tmux-"));
     tempDirs.push(tempDir);
@@ -68,10 +323,12 @@ describe.runIf(process.platform !== "win32")("runAgent process ownership", () =>
     writeFileSync(fakeTmux, [
       "#!/usr/bin/env node",
       "const { spawnSync } = require('child_process');",
+      "const { appendFileSync } = require('fs');",
       "const args = process.argv.slice(2);",
       "if (args[0] === 'send-keys') {",
       "  const command = args[args.length - 2];",
-      "  const result = spawnSync('/bin/sh', ['-lc', command], { stdio: 'inherit' });",
+      "  const result = spawnSync('/bin/sh', ['-lc', command], { encoding: 'utf8' });",
+      `  appendFileSync(${JSON.stringify(logFile)}, (result.stdout || '') + (result.stderr || ''));`,
       "  process.exit(result.status ?? 0);",
       "}",
       "process.exit(0);",
