@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MAX_PARALLEL_TASKS } from "../subagent.js";
+import type { TmuxAvailability } from "../tmux.js";
 import { emptyUsage, type SingleResult } from "../types.js";
 const tmuxMock = vi.hoisted(() => ({
-  detectTmux: vi.fn(async () => ({ available: false })),
+  detectTmux: vi.fn(async (): Promise<TmuxAvailability> => ({ available: false })),
   createWorkerPanes: vi.fn(),
   killTmuxSession: vi.fn(async () => undefined),
 }));
