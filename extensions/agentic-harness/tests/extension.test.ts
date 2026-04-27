@@ -161,6 +161,9 @@ describe("Extension Registration", () => {
     const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
     expect(readme).toContain('`backend: "auto"` (default) prefers tmux when the binary is available and otherwise falls back to the native JSON subprocess backend.');
     expect(readme).toContain("tmux attach -t <session>");
+    expect(readme).toContain("tmux kill-session -t");
+    expect(readme).toContain("Failed tmux team runs intentionally leave sessions alive");
+    expect(readme).toContain("sandbox");
     expect(schema.properties.maxOutput).toBeDefined();
     expect(schema.properties.runId).toBeDefined();
     expect(schema.properties.resumeRunId).toBeDefined();
