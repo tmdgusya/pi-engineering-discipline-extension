@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, rmSync } from "fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -54,6 +54,71 @@ afterEach(() => {
 });
 
 describe.runIf(process.platform !== "win32")("runAgent process ownership", () => {
+  it("runs a worker command through a provided tmux pane log", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "subagent-process-tmux-"));
+    tempDirs.push(tempDir);
+    const fakeTmux = join(tempDir, "tmux");
+    const logFile = join(tempDir, "pane.log");
+    const runnerScript = join(tempDir, "runner.mjs");
+    writeFileSync(runnerScript, [
+      "const message = { role: 'assistant', content: [{ type: 'text', text: 'done from tmux' }] };",
+      "console.log(JSON.stringify({ type: 'message_end', message }));",
+      "console.log(JSON.stringify({ type: 'agent_end', messages: [message] }));",
+    ].join("\n"));
+    writeFileSync(fakeTmux, [
+      "#!/usr/bin/env node",
+      "const { spawnSync } = require('child_process');",
+      "const args = process.argv.slice(2);",
+      "if (args[0] === 'send-keys') {",
+      "  const command = args[args.length - 2];",
+      "  const result = spawnSync('/bin/sh', ['-lc', command], { stdio: 'inherit' });",
+      "  process.exit(result.status ?? 0);",
+      "}",
+      "process.exit(0);",
+    ].join("\n"));
+    chmodSync(fakeTmux, 0o755);
+
+    process.argv = [process.execPath, runnerScript];
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${tempDir}:${originalPath || ""}`;
+    try {
+      const result = await runAgent({
+        agent: {
+          name: "fixture",
+          description: "fixture agent",
+          filePath: runnerScript,
+          source: "project",
+          systemPrompt: "",
+          tools: [],
+        },
+        agentName: "fixture",
+        task: "tmux-done",
+        cwd: tempDir,
+        depthConfig: resolveDepthConfig(),
+        ownership: { runId: "tmux-run", owner: "test-suite" },
+        executionMode: "tmux",
+        tmuxPane: {
+          sessionName: "pi-team-run-1",
+          windowName: "workers",
+          paneId: "%1",
+          logFile,
+          attachCommand: "tmux attach -t pi-team-run-1",
+        },
+        makeDetails: (results) => ({ mode: "single", results }),
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.terminal).toMatchObject({
+        backend: "tmux",
+        sessionName: "pi-team-run-1",
+        attachCommand: "tmux attach -t pi-team-run-1",
+      });
+      expect(result.messages.at(-1)?.content?.[0]?.text).toContain("done");
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
   it("reaps the owned process group after semantic success", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "subagent-process-success-"));
     tempDirs.push(tempDir);

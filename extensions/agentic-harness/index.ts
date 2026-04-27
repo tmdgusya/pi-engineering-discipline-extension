@@ -328,6 +328,14 @@ export default function (pi: ExtensionAPI) {
             maxOutput: input.maxOutput,
             contextMode: "fresh",
             worktree: input.worktree,
+            executionMode: input.task.terminal?.backend === "tmux" ? "tmux" : "native",
+            tmuxPane: input.task.terminal?.backend === "tmux" ? {
+              sessionName: input.task.terminal.sessionName!,
+              windowName: input.task.terminal.windowName!,
+              paneId: input.task.terminal.paneId!,
+              logFile: input.task.terminal.logFile!,
+              attachCommand: input.task.terminal.attachCommand!,
+            } : undefined,
             extraEnv: input.extraEnv,
           }),
         });

@@ -1,6 +1,6 @@
 // subagent.ts
-import { spawn } from "child_process";
-import { appendFile, mkdir, writeFile, unlink } from "fs/promises";
+import { execFile, spawn } from "child_process";
+import { appendFile, mkdir, readFile, writeFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
 import { join, basename, dirname, relative } from "path";
 import { randomBytes } from "crypto";
@@ -237,6 +237,52 @@ export interface RunAgentOptions {
   progress?: string;
   contextMode?: SubagentContextMode;
   worktree?: boolean;
+  executionMode?: "native" | "tmux";
+  tmuxPane?: {
+    sessionName: string;
+    windowName: string;
+    paneId: string;
+    logFile: string;
+    attachCommand: string;
+  };
+}
+
+const TMUX_EXIT_MARKER = "__PI_TMUX_EXIT:";
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function execFileAsync(file: string, args: readonly string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    execFile(file, [...args], (error, _stdout, stderr) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      const stderrText = stderr?.toString().trim();
+      if (stderrText) {
+        reject(new Error(stderrText));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function buildTmuxShellCommand(params: {
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  logFile: string;
+}): string {
+  const envArgs = Object.entries(params.env)
+    .filter((entry): entry is [string, string] => entry[1] !== undefined)
+    .map(([key, value]) => `${key}=${shellQuote(value)}`);
+  const command = [shellQuote(params.command), ...params.args.map(shellQuote)].join(" ");
+  const invocation = ["env", ...envArgs, command].join(" ");
+  return `{ cd ${shellQuote(params.cwd)} && ${invocation}; code=$?; printf '\\n${TMUX_EXIT_MARKER}%s\\n' "$code"; } 2>&1 | tee -a ${shellQuote(params.logFile)}`;
 }
 
 function generateRunId(): string {
@@ -287,6 +333,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
     progress,
     contextMode: requestedContextMode,
     worktree,
+    executionMode = "native",
+    tmuxPane,
   } = opts;
 
   if (!agent) {
@@ -314,6 +362,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
     model: agent.model,
     maxOutput: maxOutput ?? agent.maxOutput,
     contextMode: requestedContextMode ?? agent.context ?? "fresh",
+    terminal: executionMode === "tmux" && tmuxPane
+      ? { backend: "tmux", ...tmuxPane }
+      : { backend: "native" },
   };
 
   const emitUpdate = () => {
@@ -438,7 +489,103 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
     let closeSignal: NodeJS.Signals | undefined;
     const lifecycleWrites: Promise<void>[] = [];
 
-    const exitCode = await new Promise<number>((resolve) => {
+    let exitCode: number;
+    if (executionMode === "tmux") {
+      if (!tmuxPane) throw new Error('executionMode:"tmux" requires tmuxPane metadata.');
+      await mkdir(dirname(tmuxPane.logFile), { recursive: true });
+      await writeFile(tmuxPane.logFile, "", { flag: "a" });
+      const tmuxCommand = buildTmuxShellCommand({
+        command: resolvedSandbox.command,
+        args: resolvedSandbox.args,
+        cwd: runCwd,
+        env: resolvedSandbox.env,
+        logFile: tmuxPane.logFile,
+      });
+      await execFileAsync("tmux", ["send-keys", "-t", tmuxPane.paneId, tmuxCommand, "Enter"]);
+
+      exitCode = await new Promise<number>((resolve) => {
+        let readOffset = 0;
+        let buffer = "";
+        let settled = false;
+        let pollTimer: ReturnType<typeof setTimeout> | undefined;
+        let graceTimer: ReturnType<typeof setTimeout> | undefined;
+        let abortHandler: (() => void) | undefined;
+
+        const finish = (code: number) => {
+          if (settled) return;
+          settled = true;
+          if (pollTimer) clearTimeout(pollTimer);
+          if (graceTimer) clearTimeout(graceTimer);
+          if (signal && abortHandler) signal.removeEventListener("abort", abortHandler);
+          resolve(code);
+        };
+
+        const sendPaneSignal = () => {
+          void execFileAsync("tmux", ["send-keys", "-t", tmuxPane.paneId, "C-c"]).catch(() => undefined);
+        };
+
+        const flushLine = (line: string) => {
+          if (line.startsWith(TMUX_EXIT_MARKER)) {
+            const parsed = Number.parseInt(line.slice(TMUX_EXIT_MARKER.length).trim(), 10);
+            finish(Number.isFinite(parsed) ? parsed : 1);
+            return;
+          }
+          if (processPiJsonLine(line, result)) emitUpdate();
+          if (result.sawAgentEnd && !settled) {
+            if (graceTimer) clearTimeout(graceTimer);
+            graceTimer = setTimeout(() => {
+              if (!settled && result.sawAgentEnd) {
+                semanticTerminationRequested = true;
+                closeSignal = "SIGTERM";
+                sendPaneSignal();
+                finish(143);
+              }
+            }, AGENT_END_GRACE_MS);
+          }
+        };
+
+        const poll = async () => {
+          if (settled) return;
+          try {
+            const text = await readFile(tmuxPane.logFile, "utf-8");
+            if (text.length > readOffset) {
+              buffer += text.slice(readOffset);
+              readOffset = text.length;
+              const lines = buffer.split("\n");
+              buffer = lines.pop() || "";
+              for (const line of lines) {
+                if (line.trim()) flushLine(line);
+                if (settled) return;
+              }
+            }
+          } catch (error) {
+            if (!result.stderr.trim()) result.stderr = error instanceof Error ? error.message : String(error);
+          }
+          pollTimer = setTimeout(() => void poll(), 25);
+        };
+
+        abortHandler = () => {
+          if (settled) return;
+          const hasSemanticCompletion = result.sawAgentEnd && !!getFinalOutput(result.messages).trim();
+          if (hasSemanticCompletion) {
+            semanticTerminationRequested = true;
+            closeSignal = "SIGTERM";
+            sendPaneSignal();
+            finish(143);
+          } else {
+            wasAborted = true;
+            closeSignal = "SIGTERM";
+            sendPaneSignal();
+            finish(130);
+          }
+        };
+        if (signal?.aborted) abortHandler();
+        else signal?.addEventListener("abort", abortHandler, { once: true });
+
+        void poll();
+      });
+    } else {
+      exitCode = await new Promise<number>((resolve) => {
       const proc = spawn(resolvedSandbox.command, resolvedSandbox.args, {
         cwd: runCwd,
         shell: false,
@@ -641,6 +788,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         else signal.addEventListener("abort", abortHandler, { once: true });
       }
     });
+
+    }
 
     await Promise.allSettled(lifecycleWrites);
     result.exitCode = exitCode;

@@ -1,6 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MAX_PARALLEL_TASKS } from "../subagent.js";
 import { emptyUsage, type SingleResult } from "../types.js";
+const tmuxMock = vi.hoisted(() => ({
+  detectTmux: vi.fn(async () => ({ available: false })),
+  createWorkerPanes: vi.fn(),
+  killTmuxSession: vi.fn(async () => undefined),
+}));
+
+vi.mock("../tmux.js", () => tmuxMock);
+
 import {
   buildTeamWorkerPrompt,
   createDefaultTeamTasks,
@@ -10,6 +18,12 @@ import {
   synthesizeTeamRun,
   validateTeamTasks,
 } from "../team.js";
+
+afterEach(() => {
+  tmuxMock.detectTmux.mockReset().mockResolvedValue({ available: false });
+  tmuxMock.createWorkerPanes.mockReset();
+  tmuxMock.killTmuxSession.mockReset().mockResolvedValue(undefined);
+});
 
 function fakeResult(agent: string, task: string, text: string, overrides: Partial<SingleResult> = {}): SingleResult {
   return {
@@ -109,6 +123,61 @@ describe("runTeam", () => {
     expect(summary.verificationEvidence.failed).toBe(false);
     expect(summary.verificationEvidence.artifactRefs).toEqual([".pi/team/task-1.md", ".pi/team/task-2.md"]);
     expect(summary.verificationEvidence.worktreeRefs).toEqual(["/tmp/task-1", "/tmp/task-2"]);
+  });
+
+  it("uses tmux automatically when available and includes attach metadata in summaries", async () => {
+    tmuxMock.detectTmux.mockResolvedValue({ available: true, binary: "/usr/bin/tmux" });
+    tmuxMock.createWorkerPanes.mockResolvedValue([
+      {
+        sessionName: "pi-team-run-1",
+        windowName: "workers",
+        paneId: "%1",
+        attachCommand: "tmux attach -t pi-team-run-1",
+        logFile: "/tmp/team-run-1/task-1.log",
+      },
+      {
+        sessionName: "pi-team-run-1",
+        windowName: "workers",
+        paneId: "%2",
+        attachCommand: "tmux attach -t pi-team-run-1",
+        logFile: "/tmp/team-run-1/task-2.log",
+      },
+    ]);
+
+    const summary = await runTeam(
+      { goal: "Run tmux workers", workerCount: 2, agent: "worker", runId: "team-run-1" },
+      {
+        runTask: async ({ task, prompt }) => fakeResult(task.agent, prompt, `${task.id} done`, { terminal: task.terminal }),
+      },
+    );
+
+    expect(summary.backendRequested).toBe("auto");
+    expect(summary.backendUsed).toBe("tmux");
+    expect(summary.tasks.every((task) => task.terminal?.backend === "tmux")).toBe(true);
+    expect(summary.tasks[0].terminal).toMatchObject({
+      sessionName: "pi-team-run-1",
+      paneId: "%1",
+      attachCommand: "tmux attach -t pi-team-run-1",
+    });
+    expect(summary.finalSynthesis).toContain("tmux attach -t");
+    expect(summary.success).toBe(true);
+  });
+
+  it("falls back to native when tmux is unavailable in auto mode", async () => {
+    tmuxMock.detectTmux.mockResolvedValue({ available: false });
+
+    const summary = await runTeam(
+      { goal: "Fallback workers", workerCount: 1, agent: "worker" },
+      {
+        runTask: async ({ task, prompt }) => fakeResult(task.agent, prompt, "fallback done", { terminal: task.terminal }),
+      },
+    );
+
+    expect(summary.backendRequested).toBe("auto");
+    expect(summary.backendUsed).toBe("native");
+    expect(summary.tasks[0].terminal).toMatchObject({ backend: "native" });
+    expect(summary.success).toBe(true);
+    expect(summary.finalSynthesis).toContain("fallback done");
   });
 
   it("persists lifecycle records plus inbox/outbox messages when persistence is enabled", async () => {

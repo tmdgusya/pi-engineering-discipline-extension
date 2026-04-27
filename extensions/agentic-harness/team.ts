@@ -1,5 +1,7 @@
 import type { AgentConfig } from "./agents.js";
+import { join } from "path";
 import { MAX_CONCURRENCY, MAX_PARALLEL_TASKS, mapWithConcurrencyLimit } from "./subagent.js";
+import { createWorkerPanes, detectTmux, killTmuxSession } from "./tmux.js";
 import { getResultSummaryText, isResultSuccess, type SingleResult } from "./types.js";
 import {
   createTeamRunRecord,
@@ -24,6 +26,7 @@ export interface TeamTerminalMetadata {
   windowName?: string;
   paneId?: string;
   attachCommand?: string;
+  logFile?: string;
 }
 
 export interface TeamTask {
@@ -225,6 +228,7 @@ export function synthesizeTeamRun(
   const taskLines = tasks.map((task) => [
     `- ${task.id} (${task.owner}, ${task.agent}): ${task.status}`,
     task.resultSummary ? `  ${task.resultSummary}` : undefined,
+    task.terminal?.attachCommand ? `  Attach: ${task.terminal.attachCommand}` : undefined,
     task.errorMessage ? `  Error: ${task.errorMessage}` : undefined,
   ].filter(Boolean).join("\n"));
   return {
@@ -247,7 +251,8 @@ export function synthesizeTeamRun(
       `- passed: ${verificationEvidence.passed}`,
       `- failed: ${verificationEvidence.failed}`,
       interruptedCount ? `- interrupted/running: ${interruptedCount}` : undefined,
-    ].join("\n"),
+      backendUsed === "tmux" ? "- Tmux cleanup policy: successful runs are cleaned up automatically; failed runs leave sessions behind for debugging." : undefined,
+    ].filter(Boolean).join("\n"),
     verificationEvidence,
   };
 }
@@ -285,7 +290,11 @@ export function resolveTeamWorktreePolicy(opts: Pick<TeamRunOptions, "worktree" 
 export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promise<TeamRunSummary> {
   const agentName = opts.agent || "worker";
   const backendRequested = opts.backend ?? "auto";
-  const backendUsed: ResolvedTeamBackend = "native";
+  const backendUsed: ResolvedTeamBackend = backendRequested === "tmux"
+    ? "tmux"
+    : backendRequested === "native"
+      ? "native"
+      : (await detectTmux()).available ? "tmux" : "native";
   const now = runtime.now ?? (() => new Date().toISOString());
   const initialNow = now();
   const isResume = !!opts.resumeRunId;
@@ -306,7 +315,7 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
 
   const tasks = record.tasks;
   for (const task of tasks) {
-    task.terminal = task.terminal ?? { backend: backendUsed };
+    task.terminal = task.terminal ?? { backend: "native" };
   }
   const existingResults: SingleResult[] = [];
   try {
@@ -329,6 +338,26 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
   await persistIfEnabled(runtime, record);
 
   const runnableTasks = tasks.filter((task) => task.status === "pending");
+  let tmuxSessionName: string | undefined;
+  if (backendUsed === "tmux" && runnableTasks.length > 0) {
+    const paneRefs = await createWorkerPanes({
+      runId: record.runId,
+      workerCount: runnableTasks.length,
+      logDir: join(process.cwd(), ".pi", "agent", "runs", record.runId, "tmux"),
+    });
+    for (const [index, task] of runnableTasks.entries()) {
+      const pane = paneRefs[index];
+      if (pane) {
+        tmuxSessionName = pane.sessionName;
+        task.terminal = { backend: "tmux", ...pane };
+      }
+    }
+    await persistIfEnabled(runtime, record);
+  } else {
+    for (const task of tasks) {
+      task.terminal = { backend: "native" };
+    }
+  }
   const runWithWorktree = resolveTeamWorktreePolicy(opts);
   const results = await mapWithConcurrencyLimit(runnableTasks, MAX_CONCURRENCY, async (task, index) => {
     const startedAt = now();
@@ -413,6 +442,9 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
     : tasks.some((task) => task.status === "interrupted" || task.status === "in_progress")
       ? "interrupted"
       : "failed";
+  if (backendUsed === "tmux" && summary.success && tmuxSessionName) {
+    await killTmuxSession(tmuxSessionName);
+  }
   record = recordTeamEvent(record, { type: summary.success ? "run_completed" : "run_failed", createdAt: now() });
   record = setTeamRunStatus(record, finalStatus, now(), summary);
   await persistIfEnabled(runtime, record);
