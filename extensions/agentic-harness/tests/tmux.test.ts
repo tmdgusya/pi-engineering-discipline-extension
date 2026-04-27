@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildAttachCommand,
   buildTmuxSessionName,
@@ -78,6 +78,44 @@ describe("tmux helpers", () => {
       { file: "tmux", args: ["pipe-pane", "-t", "%2", "-o", "cat >> '/tmp/John Doe/a;b/task-2.log'"] },
       { file: "tmux", args: ["select-layout", "-t", "pi-team-demo:workers", "tiled"] },
     ]);
+  });
+
+  it("retries session creation with a collision-safe suffix without killing the existing session", async () => {
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const runner: TmuxCommandRunner = (file, args, _options, callback) => {
+      calls.push({ file, args: [...args] });
+      if (args[0] === "new-session" && args.includes("pi-run")) {
+        callback(new Error("duplicate session: pi-run"), "", "duplicate session: pi-run");
+        return;
+      }
+      if (args[0] === "new-session") {
+        callback(null, "%1\n", "");
+        return;
+      }
+      callback(null, "", "");
+    };
+    const suffixGenerator = vi.fn(() => "retry1");
+
+    await expect(
+      createWorkerPanes({ runId: "run", workerCount: 1, logDir: "/tmp/run", commandRunner: runner, suffixGenerator }),
+    ).resolves.toEqual([
+      {
+        sessionName: "pi-run-attempt-retry1",
+        windowName: "workers",
+        paneId: "%1",
+        attachCommand: "tmux attach -t pi-run-attempt-retry1",
+        logFile: "/tmp/run/task-1.log",
+        sessionAttempt: "retry1",
+      },
+    ]);
+    expect(suffixGenerator).toHaveBeenCalledOnce();
+    expect(calls.map((call) => call.args)).toEqual([
+      ["new-session", "-d", "-s", "pi-run", "-n", "workers", "-P", "-F", "#{pane_id}"],
+      ["new-session", "-d", "-s", "pi-run-attempt-retry1", "-n", "workers", "-P", "-F", "#{pane_id}"],
+      ["pipe-pane", "-t", "%1", "-o", "cat >> '/tmp/run/task-1.log'"],
+      ["select-layout", "-t", "pi-run-attempt-retry1:workers", "tiled"],
+    ]);
+    expect(calls.some((call) => call.args[0] === "kill-session")).toBe(false);
   });
 
   it("kills tmux sessions best-effort", async () => {

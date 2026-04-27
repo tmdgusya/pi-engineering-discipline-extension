@@ -27,6 +27,8 @@ export interface TeamTerminalMetadata {
   paneId?: string;
   attachCommand?: string;
   logFile?: string;
+  tmuxBinary?: string;
+  sessionAttempt?: string;
 }
 
 export interface TeamTask {
@@ -290,11 +292,13 @@ export function resolveTeamWorktreePolicy(opts: Pick<TeamRunOptions, "worktree" 
 export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promise<TeamRunSummary> {
   const agentName = opts.agent || "worker";
   const backendRequested = opts.backend ?? "auto";
+  const tmuxAvailability = backendRequested === "native" ? { available: false } : await detectTmux();
+  const tmuxBinary = "binary" in tmuxAvailability ? tmuxAvailability.binary : undefined;
   const backendUsed: ResolvedTeamBackend = backendRequested === "tmux"
     ? "tmux"
     : backendRequested === "native"
       ? "native"
-      : (await detectTmux()).available ? "tmux" : "native";
+      : tmuxAvailability.available ? "tmux" : "native";
   const now = runtime.now ?? (() => new Date().toISOString());
   const initialNow = now();
   const isResume = !!opts.resumeRunId;
@@ -340,19 +344,39 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
   const runnableTasks = tasks.filter((task) => task.status === "pending");
   let tmuxSessionName: string | undefined;
   if (backendUsed === "tmux" && runnableTasks.length > 0) {
-    const paneRefs = await createWorkerPanes({
-      runId: record.runId,
-      workerCount: runnableTasks.length,
-      logDir: join(process.cwd(), ".pi", "agent", "runs", record.runId, "tmux"),
-    });
-    for (const [index, task] of runnableTasks.entries()) {
-      const pane = paneRefs[index];
-      if (pane) {
-        tmuxSessionName = pane.sessionName;
-        task.terminal = { backend: "tmux", ...pane };
+    try {
+      const paneRefs = await createWorkerPanes({
+        runId: record.runId,
+        workerCount: runnableTasks.length,
+        logDir: join(process.cwd(), ".pi", "agent", "runs", record.runId, "tmux"),
+        ...(tmuxBinary ? { binary: tmuxBinary } : {}),
+      });
+      for (const [index, task] of runnableTasks.entries()) {
+        const pane = paneRefs[index];
+        if (pane) {
+          tmuxSessionName = pane.sessionName;
+          task.terminal = { backend: "tmux", ...pane, ...(tmuxBinary ? { tmuxBinary } : {}) };
+        }
       }
+      await persistIfEnabled(runtime, record);
+    } catch (error) {
+      const failedAt = now();
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      for (const task of runnableTasks) {
+        task.status = "failed";
+        task.updatedAt = failedAt;
+        task.completedAt = failedAt;
+        task.errorMessage = errorMessage;
+        task.terminal = { backend: "tmux", ...(tmuxBinary ? { tmuxBinary } : {}) };
+        record = recordTeamEvent(record, { type: "task_failed", taskId: task.id, createdAt: failedAt, message: errorMessage });
+      }
+      const summary = synthesizeTeamRun(record.goal, tasks, [], opts.maxOutput, backendRequested, backendUsed);
+      record = recordTeamEvent(record, { type: "run_failed", createdAt: failedAt, message: errorMessage });
+      record = setTeamRunStatus(record, "failed", failedAt, summary);
+      await persistIfEnabled(runtime, record);
+      if (tmuxSessionName) await killTmuxSession(tmuxSessionName, undefined, tmuxBinary);
+      return summary;
     }
-    await persistIfEnabled(runtime, record);
   } else {
     for (const task of tasks) {
       task.terminal = { backend: "native" };
@@ -443,7 +467,7 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
       ? "interrupted"
       : "failed";
   if (backendUsed === "tmux" && summary.success && tmuxSessionName) {
-    await killTmuxSession(tmuxSessionName);
+    await killTmuxSession(tmuxSessionName, undefined, tmuxBinary);
   }
   record = recordTeamEvent(record, { type: summary.success ? "run_completed" : "run_failed", createdAt: now() });
   record = setTeamRunStatus(record, finalStatus, now(), summary);

@@ -44,6 +44,8 @@ export interface TerminalMetadata {
   paneId?: string;
   attachCommand?: string;
   logFile?: string;
+  tmuxBinary?: string;
+  sessionAttempt?: string;
 }
 
 /** Result of a single subagent invocation. */

@@ -335,7 +335,9 @@ export default function (pi: ExtensionAPI) {
               paneId: input.task.terminal.paneId!,
               logFile: input.task.terminal.logFile!,
               attachCommand: input.task.terminal.attachCommand!,
-            } : undefined,
+              tmuxBinary: input.task.terminal.tmuxBinary,
+              sessionAttempt: input.task.terminal.sessionAttempt,
+            } as any : undefined,
             extraEnv: input.extraEnv,
           }),
         });

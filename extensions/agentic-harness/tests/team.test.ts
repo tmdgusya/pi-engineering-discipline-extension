@@ -164,6 +164,67 @@ describe("runTeam", () => {
     expect(summary.success).toBe(true);
   });
 
+  it("propagates detected tmux binary metadata to panes, workers, and cleanup", async () => {
+    tmuxMock.detectTmux.mockResolvedValue({ available: true, binary: "/opt/custom/tmux" });
+    tmuxMock.createWorkerPanes.mockResolvedValue([
+      {
+        sessionName: "pi-custom-binary",
+        windowName: "workers",
+        paneId: "%1",
+        attachCommand: "tmux attach -t pi-custom-binary",
+        logFile: "/tmp/custom-binary/task-1.log",
+      },
+    ]);
+    const terminals: any[] = [];
+
+    const summary = await runTeam(
+      { goal: "Use custom tmux", workerCount: 1, agent: "worker", runId: "custom-binary" },
+      {
+        runTask: async ({ task, prompt }) => {
+          terminals.push(task.terminal);
+          return fakeResult(task.agent, prompt, "custom tmux done", { terminal: task.terminal });
+        },
+      },
+    );
+
+    expect(summary.success).toBe(true);
+    expect(tmuxMock.createWorkerPanes).toHaveBeenCalledWith(expect.objectContaining({ binary: "/opt/custom/tmux" }));
+    expect(terminals[0]).toMatchObject({ backend: "tmux", tmuxBinary: "/opt/custom/tmux" });
+    expect(tmuxMock.killTmuxSession).toHaveBeenCalledWith("pi-custom-binary", undefined, "/opt/custom/tmux");
+  });
+
+  it("converts tmux pane setup failures into persisted failed summaries", async () => {
+    tmuxMock.detectTmux.mockResolvedValue({ available: true, binary: "/opt/custom/tmux" });
+    tmuxMock.createWorkerPanes.mockRejectedValue(new Error("tmux setup exploded"));
+    const records: any[] = [];
+
+    const summary = await runTeam(
+      { goal: "Fail setup cleanly", workerCount: 2, agent: "worker", runId: "setup-failure" },
+      {
+        now: (() => {
+          let tick = 0;
+          return () => `2026-04-27T00:10:0${tick++}.000Z`;
+        })(),
+        persistRun: (record) => {
+          records.push(JSON.parse(JSON.stringify(record)));
+        },
+        runTask: async () => {
+          throw new Error("workers must not run after tmux setup failure");
+        },
+      },
+    );
+
+    const finalRecord = records.at(-1);
+    expect(summary.success).toBe(false);
+    expect(summary.failedCount).toBe(2);
+    expect(summary.tasks.map((task) => task.status)).toEqual(["failed", "failed"]);
+    expect(summary.tasks.every((task) => task.errorMessage === "tmux setup exploded")).toBe(true);
+    expect(finalRecord.status).toBe("failed");
+    expect(finalRecord.summary.success).toBe(false);
+    expect(finalRecord.events.filter((event: any) => event.type === "task_failed")).toHaveLength(2);
+    expect(finalRecord.events.at(-1).type).toBe("run_failed");
+  });
+
   it("falls back to native when tmux is unavailable in auto mode", async () => {
     tmuxMock.detectTmux.mockResolvedValue({ available: false });
 
