@@ -218,7 +218,7 @@ export function markStaleRunningTasks(record: TeamRunRecord, options: MarkStaleR
 export async function writeTeamRunRecord(record: TeamRunRecord, rootDir = defaultTeamRunStateRoot()): Promise<string> {
   const file = teamRunRecordPath(rootDir, record.runId);
   await mkdir(dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  const tmp = `${file}.${process.pid}.${Date.now()}.${randomBytes(4).toString("hex")}.tmp`;
   await writeFile(tmp, `${JSON.stringify(record, null, 2)}\n`, "utf-8");
   await rename(tmp, file);
   return file;

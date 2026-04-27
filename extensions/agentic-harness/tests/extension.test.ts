@@ -426,12 +426,12 @@ describe("ask_user_question Tool", () => {
     );
 
     expect(result.content[0].text).toBe("Option A");
-    // Should auto-append "직접 입력하기"
+    // Should auto-append "Enter custom response"
     const selectChoices = mockCtx.ui.select.mock.calls[0][1];
-    expect(selectChoices).toContain("직접 입력하기");
+    expect(selectChoices).toContain("Enter custom response");
   });
 
-  it("should switch to input when 직접 입력하기 is selected", async () => {
+  it("should switch to input when Enter custom response is selected", async () => {
     const { mockPi, tools } = createMockPi();
     extension(mockPi);
 
@@ -439,7 +439,7 @@ describe("ask_user_question Tool", () => {
     const mockCtx: any = {
       ui: {
         input: vi.fn().mockResolvedValue("custom answer"),
-        select: vi.fn().mockResolvedValue("직접 입력하기"),
+        select: vi.fn().mockResolvedValue("Enter custom response"),
       },
     };
 

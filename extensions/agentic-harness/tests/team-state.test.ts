@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createDefaultTeamTasks } from "../team.js";
 import {
   createTeamRunRecord,
@@ -78,6 +78,31 @@ describe("team-state", () => {
     expect(record.messages.map((message) => message.kind)).toEqual(["inbox", "outbox"]);
     expect(record.messages[0]).toMatchObject({ id: "team-message-test-message-1", deliveredAt: "2026-04-27T00:00:01.000Z" });
     expect(record.events.filter((event) => event.type === "message_recorded")).toHaveLength(2);
+  });
+
+  it("does not collide temp files during concurrent writes in the same millisecond", async () => {
+    await withTempDir(async (dir) => {
+      const record = createTeamRunRecord({
+        runId: "team-state-concurrent-write",
+        goal: "Persist concurrently",
+        tasks: createDefaultTeamTasks("Persist concurrently", 1, "worker"),
+        now: "2026-04-27T00:00:00.000Z",
+      });
+      const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1_777_300_000_000);
+
+      try {
+        await expect(Promise.all([
+          writeTeamRunRecord(record, dir),
+          writeTeamRunRecord(record, dir),
+          writeTeamRunRecord(record, dir),
+        ])).resolves.toHaveLength(3);
+      } finally {
+        nowSpy.mockRestore();
+      }
+
+      const restored = await readTeamRunRecord("team-state-concurrent-write", dir);
+      expect(restored.runId).toBe("team-state-concurrent-write");
+    });
   });
 
   it("marks stale in-progress tasks interrupted or retryable on resume", () => {
