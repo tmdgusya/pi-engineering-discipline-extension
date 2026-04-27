@@ -57,6 +57,6 @@ Expected result:
 Working directory: `/Users/lit/.pi/agent/git/github.com/tmdgusya/roach-pi/.omx/team/implement-the-remaining-roach/worktrees/worker-4`
 
 - PASS — `grep -n "^## Lightweight Native Team Mode" extensions/agentic-harness/README.md` returned one section at line 61.
-- PASS — `cd extensions/agentic-harness && npm test` passed 30 test files / 276 tests.
+- PASS — `cd extensions/agentic-harness && npm test` passed 30 test files / 279 tests after integrating the team-mode contract/registration test updates.
 - PASS — `cd extensions/agentic-harness && npm run build` passed TypeScript compilation (`tsc --noEmit`).
 - Lint — no `lint` script exists in `extensions/agentic-harness/package.json`; lint gate remains not applicable for this branch.
