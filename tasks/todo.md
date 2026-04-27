@@ -128,3 +128,41 @@ Done when:
 - Tests: PASS — 29 files, 262 tests
 - Review: PASS — `docs/engineering-discipline/reviews/2026-04-24-pi-subagents-selective-adoption-review.md`
 - Note: `npm ci` reported 8 existing npm audit vulnerabilities; no new dependencies were added in this change.
+
+## Plan: Team mode tmux backend
+
+- [x] Clarify desired behavior: use tmux when available, keep native fallback otherwise
+- [x] Inspect current team/subagent architecture and verification surface
+- [x] Write executable implementation plan in `docs/engineering-discipline/plans/2026-04-27-team-mode-tmux-backend.md`
+- [x] Begin subagent execution
+- [x] Task 1 complete — backend contract, schema, and state fields landed (`9444b54`)
+- [x] Task 2 complete — tmux helper module and tests landed (`9c11abe`)
+- [x] Task 3 complete — tmux backend runtime integration landed (`ae6ff4b`, fixup `f0e0e12`)
+- [x] Task 4 complete — docs and root registration verification landed (`dc536b0`)
+- [x] Task 5 complete — final verification passed
+
+### Team mode tmux backend execution results
+- Task 1 commit: `9444b54 feat: add team backend selection contract`
+- Task 2 commit: `9c11abe feat: add tmux helper module for team backend`
+- Task 3 commits: `ae6ff4b feat: integrate optional tmux backend for team workers`, `f0e0e12 fix: type tmux availability mock`
+- Task 4 commit: `dc536b0 docs: describe team tmux backend and fallback behavior`
+- Final verification: `cd extensions/agentic-harness && npm run build && npm test` ✅
+- Focused regression: `cd extensions/agentic-harness && npm test -- --run tests/tmux.test.ts tests/team.test.ts tests/subagent-process.test.ts tests/extension.test.ts` ✅
+
+## Plan: Team tmux backend bugfix hardening
+
+- [x] Review reported bug list with independent bug/security/performance reviewers
+- [x] Write executable hardening plan in `docs/engineering-discipline/plans/2026-04-27-team-tmux-bugfix-hardening.md`
+- [x] Begin subagent execution
+- [x] Task 1 complete — tmux shell command handling hardened (`1f1907c`)
+- [x] Task 2 complete — tmux runtime log/lifecycle hardened (`f2c682a`)
+- [x] Task 3 complete — team-level setup/session robustness hardened (`0bedd7c`)
+- [x] Task 4 complete — tmux cleanup/sandbox caveats documented (`94302e3`)
+- [x] Task 5 complete — final verification passed after residual tmux binary propagation fix
+
+### Team tmux backend bugfix hardening final review notes
+- Highest-level verification: PASS — `cd extensions/agentic-harness && npm run build && npm test` (33 files, 305 tests).
+- Focused tmux hardening regression suite: PASS — `cd extensions/agentic-harness && npm test -- --run tests/shell.test.ts tests/tmux.test.ts tests/subagent-process.test.ts tests/team.test.ts tests/extension.test.ts` (5 files, 79 tests).
+- Manual success criteria: PASS — residual issue fixed by typing `RunAgentOptions.tmuxPane.tmuxBinary/sessionAttempt`, removing the `index.ts` cast, and using `tmuxPane.tmuxBinary ?? "tmux"` for tmux runtime `send-keys` launch and C-c termination. Added regression coverage proving a custom tmux binary handles `send-keys`.
+- Manual success criteria verified as covered by code/tests: shell-quoted `pipe-pane` log paths, stderr-only tmux helper warnings, detected tmux binary propagation through setup/runtime/cleanup, stale marker truncation, duplicate `tee` removal, useful tmux failure log tail, setup failure persistence, collision retry without deleting existing sessions, incremental log polling, tmux lifecycle/process-log events, and native behavior regression coverage.
+- Hardening commits relevant to this work: `1f1907c fix: harden tmux shell command handling`; `f2c682a fix: harden tmux runtime log and lifecycle handling`; `0bedd7c fix: handle tmux setup failures and session collisions`; `94302e3 docs: clarify tmux cleanup and sandbox caveats`; pending residual fix commit.

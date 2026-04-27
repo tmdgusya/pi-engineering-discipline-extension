@@ -309,6 +309,73 @@ describe.runIf(process.platform !== "win32")("runAgent process ownership", () =>
     }
   });
 
+  it("uses the provided tmux binary for send-keys", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "subagent-process-tmux-binary-"));
+    tempDirs.push(tempDir);
+    const customTmux = join(tempDir, "custom-tmux");
+    const logFile = join(tempDir, "pane.log");
+    const callsFile = join(tempDir, "calls.log");
+    const runnerScript = join(tempDir, "runner.mjs");
+    writeFileSync(runnerScript, [
+      "const message = { role: 'assistant', content: [{ type: 'text', text: 'custom tmux binary done' }] };",
+      "console.log(JSON.stringify({ type: 'message_end', message }));",
+      "console.log(JSON.stringify({ type: 'agent_end', messages: [message] }));",
+    ].join("\n"));
+    writeFileSync(customTmux, [
+      `#!${process.execPath}`,
+      "const { spawnSync } = require('child_process');",
+      "const { appendFileSync } = require('fs');",
+      `appendFileSync(${JSON.stringify(callsFile)}, process.argv[1] + ' ' + process.argv.slice(2).join(' ') + '\\n');`,
+      "const args = process.argv.slice(2);",
+      "if (args[0] === 'send-keys') {",
+      "  const command = args[args.length - 2];",
+      "  const result = spawnSync('/bin/sh', ['-lc', command], { encoding: 'utf8' });",
+      `  appendFileSync(${JSON.stringify(logFile)}, (result.stdout || '') + (result.stderr || ''));`,
+      "  process.exit(result.status ?? 0);",
+      "}",
+      "process.exit(0);",
+    ].join("\n"));
+    chmodSync(customTmux, 0o755);
+
+    process.argv = [process.execPath, runnerScript];
+    const originalPath = process.env.PATH;
+    process.env.PATH = tempDir;
+    try {
+      const result = await runAgent({
+        agent: {
+          name: "fixture",
+          description: "fixture agent",
+          filePath: runnerScript,
+          source: "project",
+          systemPrompt: "",
+          tools: [],
+        },
+        agentName: "fixture",
+        task: "tmux-custom-binary",
+        cwd: tempDir,
+        depthConfig: resolveDepthConfig(),
+        ownership: { runId: "tmux-custom-binary-run", owner: "test-suite" },
+        executionMode: "tmux",
+        tmuxPane: {
+          sessionName: "pi-team-run-custom-binary",
+          windowName: "workers",
+          paneId: "%1",
+          logFile,
+          attachCommand: "tmux attach -t pi-team-run-custom-binary",
+          tmuxBinary: customTmux,
+        },
+        makeDetails: (results) => ({ mode: "single", results }),
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.messages.at(-1)?.content?.[0]?.text).toContain("custom tmux binary done");
+      expect(readFileSync(callsFile, "utf8")).toContain(`${customTmux} send-keys -t %1`);
+      expect(result.terminal).toMatchObject({ backend: "tmux", tmuxBinary: customTmux });
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
   it("runs a worker command through a provided tmux pane log", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "subagent-process-tmux-"));
     tempDirs.push(tempDir);

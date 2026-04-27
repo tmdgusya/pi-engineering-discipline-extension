@@ -223,6 +223,8 @@ export interface RunLifecycleEvent {
   paneId?: string;
   attachCommand?: string;
   logFile?: string;
+  tmuxBinary?: string;
+  sessionAttempt?: string;
 }
 
 export interface RunAgentOptions {
@@ -251,6 +253,8 @@ export interface RunAgentOptions {
     paneId: string;
     logFile: string;
     attachCommand: string;
+    tmuxBinary?: string;
+    sessionAttempt?: string;
   };
 }
 
@@ -533,6 +537,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         paneId: tmuxPane.paneId,
         attachCommand: tmuxPane.attachCommand,
         logFile: tmuxPane.logFile,
+        tmuxBinary: tmuxPane.tmuxBinary,
+        sessionAttempt: tmuxPane.sessionAttempt,
       };
       await mkdir(dirname(tmuxPane.logFile), { recursive: true });
       await writeFile(tmuxPane.logFile, "", "utf-8");
@@ -542,7 +548,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         cwd: runCwd,
         env: resolvedSandbox.env,
       });
-      await execFileAsync("tmux", ["send-keys", "-t", tmuxPane.paneId, tmuxCommand, "Enter"]);
+      const tmuxBinary = tmuxPane.tmuxBinary ?? "tmux";
+      await execFileAsync(tmuxBinary, ["send-keys", "-t", tmuxPane.paneId, tmuxCommand, "Enter"]);
       emitLifecycle({
         phase: "spawned",
         runId: resolvedOwnership.runId,
@@ -597,7 +604,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
               ...tmuxLifecycleMetadata,
             });
           }
-          void execFileAsync("tmux", ["send-keys", "-t", tmuxPane.paneId, "C-c"]).catch(() => undefined);
+          void execFileAsync(tmuxBinary, ["send-keys", "-t", tmuxPane.paneId, "C-c"]).catch(() => undefined);
         };
 
         const flushLine = (line: string) => {
