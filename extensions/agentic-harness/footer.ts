@@ -2,6 +2,7 @@ import type { Component } from "@mariozechner/pi-tui";
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import type { ReadonlyFooterDataProvider } from "@mariozechner/pi-coding-agent";
 import { basename } from "path";
+import type { PlanProgressTracker } from "./plan-progress.js";
 
 export interface FooterContext {
   cwd: string;
@@ -15,7 +16,6 @@ export interface CacheStats {
 }
 
 export interface ActiveTools {
-  /** toolCallId → toolName */
   running: Map<string, string>;
 }
 
@@ -40,13 +40,22 @@ export class RoachFooter implements Component {
   private footerCtx: FooterContext;
   private cacheStats: CacheStats;
   private activeTools: ActiveTools;
+  private planProgress: PlanProgressTracker | null;
 
-  constructor(theme: Theme, footerData: ReadonlyFooterDataProvider, footerCtx: FooterContext, cacheStats: CacheStats, activeTools: ActiveTools) {
+  constructor(
+    theme: Theme,
+    footerData: ReadonlyFooterDataProvider,
+    footerCtx: FooterContext,
+    cacheStats: CacheStats,
+    activeTools: ActiveTools,
+    planProgress: PlanProgressTracker | null = null,
+  ) {
     this.theme = theme;
     this.footerData = footerData;
     this.footerCtx = footerCtx;
     this.cacheStats = cacheStats;
     this.activeTools = activeTools;
+    this.planProgress = planProgress;
   }
 
   invalidate(): void {}
@@ -94,6 +103,13 @@ export class RoachFooter implements Component {
     const line2 = ` ${line2Parts.join(sep)}`;
 
     const border = t.fg("dim", "─".repeat(width));
+
+    if (this.planProgress?.hasPlan()) {
+      const planLines = this.planProgress.render(t, width - 4);
+      const planBorder = t.fg("dim", "─".repeat(width));
+      return [planBorder, ...planLines, border, line1, line2];
+    }
+
     return [border, line1, line2];
   }
 }

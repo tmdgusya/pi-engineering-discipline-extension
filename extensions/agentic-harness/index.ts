@@ -17,6 +17,14 @@ import { microcompactMessages, getCompactionPrompt, formatCompactSummary } from 
 import { convertToLlm, serializeConversation } from "@mariozechner/pi-coding-agent";
 import { complete } from "@mariozechner/pi-ai";
 import { isDisciplineAgent, augmentAgentWithKarpathy, getSlopCleanerTask } from "./discipline.js";
+import { PlanProgressTracker } from "./plan-progress.js";
+import {
+  completePlanSubagentTasks,
+  getToolExecutionArgs,
+  loadPlanFromToolResultEvent,
+  reloadPlanFromSubagentArgs,
+  startPlanSubagentTasks,
+} from "./plan-progress-events.js";
 import { fetchUrlToMarkdown } from "./webfetch/utils.js";
 import { PI_TEAM_WORKER_ENV, cleanupActiveTeamTmuxResources, formatTeamRunSummary, runTeam, type TeamBackend, type TeamRunSummary } from "./team.js";
 import { defaultTeamRunStateRoot, listTeamRuns, readTeamRunRecord, writeTeamRunRecord, type StaleTaskResumeMode } from "./team-state.js";
@@ -41,8 +49,13 @@ let currentPhase: WorkflowPhase = "idle";
 let activeGoalDocument: string | null = null;
 
 const cacheStats: CacheStats = { totalInput: 0, totalCacheRead: 0 };
-
 const activeTools: ActiveTools = { running: new Map() };
+const planProgress = new PlanProgressTracker();
+
+// Track tool call arguments by toolCallId so we can correlate plan-task
+// subagent starts/completions across tool_execution_start/end events.
+const toolCallArgsById = new Map<string, Record<string, unknown>>();
+const planTaskIdsByToolCallId = new Map<string, number[]>();
 
 type StringEnumSchema<T extends string> = TUnsafe<T> & {
   type: "string";
@@ -1041,10 +1054,20 @@ export default function (pi: ExtensionAPI) {
     ultrareviewing: /^docs\/engineering-discipline\/reviews\//,
   };
 
-  pi.on("tool_result", async (event, _ctx) => {
+  pi.on("tool_result", async (event, ctx) => {
+    const toolName = event.toolName;
+
+    // Preserve the current plan if the result is a write confirmation or non-plan text.
+    if (toolName === "read" || toolName === "write") {
+      await loadPlanFromToolResultEvent(planProgress, {
+        toolName,
+        input: event.input as Record<string, unknown> | undefined,
+        content: event.content,
+      }, ctx.cwd);
+    }
+
     if (currentPhase === "idle") return;
 
-    const toolName = event.toolName;
     if (toolName !== "write" && toolName !== "edit") return;
 
     const filePath = event.input.path as string | undefined;
@@ -1068,6 +1091,10 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("tool_call", async (event, ctx) => {
+    if (event.toolCallId) {
+      toolCallArgsById.set(event.toolCallId, event.input ?? {});
+    }
+
     const hasUI = (ctx as any).hasUI !== false && !!ctx?.ui?.select;
 
     if (isToolCallEventType("bash", event)) {
@@ -1211,6 +1238,7 @@ export default function (pi: ExtensionAPI) {
       if (!ok) return;
 
       currentPhase = "planning";
+      planProgress.clear();
       ctx.ui.setStatus("harness", "Agentic planning workflow in progress...");
 
       const topic = args?.trim() || "";
@@ -1237,6 +1265,7 @@ export default function (pi: ExtensionAPI) {
       if (!confirmed) return;
 
       currentPhase = "ultraplanning";
+      planProgress.clear();
       ctx.ui.setStatus("harness", "Agentic milestone workflow in progress...");
 
       const topic = args?.trim() || "";
@@ -1466,6 +1495,7 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args, ctx) => {
       currentPhase = "idle";
       activeGoalDocument = null;
+      planProgress.clear();
       ctx.ui.setStatus("harness", undefined);
       ctx.ui.notify("Workflow phase reset to idle.", "info");
     },
@@ -1524,12 +1554,35 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  pi.on("tool_execution_start", async (event, _ctx) => {
+  pi.on("tool_execution_start", async (event, ctx) => {
     activeTools.running.set(event.toolCallId, event.toolName);
+
+    if (event.toolName === "subagent") {
+      const args = getToolExecutionArgs(event, toolCallArgsById.get(event.toolCallId));
+      if (args) {
+        toolCallArgsById.set(event.toolCallId, args);
+        await reloadPlanFromSubagentArgs(planProgress, args, ctx.cwd);
+        const matchedTaskIds = startPlanSubagentTasks(planProgress, args);
+        if (matchedTaskIds.length > 0) {
+          planTaskIdsByToolCallId.set(event.toolCallId, matchedTaskIds);
+        }
+      }
+    }
   });
 
   pi.on("tool_execution_end", async (event, _ctx) => {
     activeTools.running.delete(event.toolCallId);
+
+    if (event.toolName === "subagent") {
+      const args = getToolExecutionArgs(event, toolCallArgsById.get(event.toolCallId));
+      if (args) {
+        const matchedTaskIds = planTaskIdsByToolCallId.get(event.toolCallId);
+        completePlanSubagentTasks(planProgress, args, !(event.isError ?? false), matchedTaskIds);
+      }
+    }
+
+    toolCallArgsById.delete(event.toolCallId);
+    planTaskIdsByToolCallId.delete(event.toolCallId);
   });
 
   pi.on("session_start", async (_event, ctx) => {
@@ -1539,6 +1592,9 @@ export default function (pi: ExtensionAPI) {
     cacheStats.totalInput = 0;
     cacheStats.totalCacheRead = 0;
     activeTools.running.clear();
+    toolCallArgsById.clear();
+    planTaskIdsByToolCallId.clear();
+    planProgress.clear();
 
     ctx.ui.setHeader((_tui, theme) => {
       const banner = [
@@ -1578,7 +1634,7 @@ export default function (pi: ExtensionAPI) {
         cwd: ctx.cwd,
         getModelName: () => ctx.model?.name,
         getContextUsage: () => ctx.getContextUsage(),
-      }, cacheStats, activeTools);
+      }, cacheStats, activeTools, planProgress);
     });
 
     ctx.ui.notify(

@@ -76,6 +76,20 @@ describe("formatToolCall", () => {
     expect(result).toContain("bar.ts");
   });
 
+  it("should keep read summaries as path plus optional range", () => {
+    expect(formatToolCall("read", { path: "/tmp/file.ts" }, identity)).toBe("read /tmp/file.ts");
+    expect(formatToolCall("read", { path: "/tmp/file.ts", offset: 3, limit: 2 }, identity)).toBe("read /tmp/file.ts:3-4");
+  });
+
+  it("should keep write summaries as path plus line count", () => {
+    const result = formatToolCall("write", { path: "/tmp/file.ts", content: "one\ntwo\nthree" }, identity);
+    expect(result).toBe("write /tmp/file.ts (3 lines)");
+  });
+
+  it("should keep edit summaries as path only", () => {
+    expect(formatToolCall("edit", { path: "/tmp/file.ts" }, identity)).toBe("edit /tmp/file.ts");
+  });
+
   it("should format grep with pattern", () => {
     const result = formatToolCall("grep", { pattern: "TODO", path: "/src" }, identity);
     expect(result).toContain("TODO");
