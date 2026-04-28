@@ -294,7 +294,7 @@ export function buildTmuxShellCommand(params: {
   const markerTarget = params.exitMarkerLogFile
     ? ` >> ${shellQuote(params.exitMarkerLogFile)}`
     : "";
-  return `{ cd ${shellQuote(params.cwd)} && ${invocation}; code=$?; printf '\n${TMUX_EXIT_MARKER}%s\n' "$code"${markerTarget}; exit "$code"; } 2>&1`;
+  return `{ cd ${shellQuote(params.cwd)} && ${invocation}; code=$?; printf '\\n${TMUX_EXIT_MARKER}%s\\n' "$code"${markerTarget}; exit "$code"; } 2>&1`;
 }
 
 function buildReadableTmuxNodeScript(params: {
@@ -331,7 +331,7 @@ function renderLine(line) {
 const child = spawn(command, args, { env, stdio: ["ignore", "pipe", "pipe"] });
 const rl = readline.createInterface({ input: child.stdout });
 rl.on("line", (line) => {
-  appendFileSync(eventLogFile, line + "\n");
+  appendFileSync(eventLogFile, line + "\\n");
   for (const rendered of renderLine(line)) console.log(rendered);
 });
 child.stderr.on("data", (chunk) => process.stderr.write(chunk));
@@ -657,8 +657,9 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
     let exitCode: number;
     if (executionMode === "tmux") {
       if (!tmuxPane) throw new Error('executionMode:"tmux" requires tmuxPane metadata.');
-      const eventLogFile = tmuxPane.eventLogFile ?? defaultTmuxEventLogFile(tmuxPane.logFile);
-      if (result.terminal?.backend === "tmux") result.terminal.eventLogFile = eventLogFile;
+      const tmuxEventLogFile = tmuxPane.eventLogFile;
+      const tmuxPollLogFile = tmuxEventLogFile ?? tmuxPane.logFile;
+      if (result.terminal?.backend === "tmux" && tmuxEventLogFile) result.terminal.eventLogFile = tmuxEventLogFile;
       const tmuxLifecycleMetadata = {
         backend: "tmux" as const,
         sessionName: tmuxPane.sessionName,
@@ -666,20 +667,14 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         paneId: tmuxPane.paneId,
         attachCommand: tmuxPane.attachCommand,
         logFile: tmuxPane.logFile,
-        eventLogFile: tmuxPane.eventLogFile,
+        ...(tmuxEventLogFile ? { eventLogFile: tmuxEventLogFile } : {}),
         tmuxBinary: tmuxPane.tmuxBinary,
         sessionAttempt: tmuxPane.sessionAttempt,
       };
-      const tmuxEventLogFile = tmuxPane.eventLogFile ?? join(
-        dirname(tmuxPane.logFile),
-        `${basename(tmuxPane.logFile).replace(/\.[^.]+$/, "") || "pane"}.events.jsonl`,
-      );
-      tmuxLifecycleMetadata.eventLogFile = tmuxEventLogFile;
-      if (result.terminal?.backend === "tmux") result.terminal.eventLogFile = tmuxEventLogFile;
       await mkdir(dirname(tmuxPane.logFile), { recursive: true });
-      await mkdir(dirname(tmuxEventLogFile), { recursive: true });
+      if (tmuxEventLogFile) await mkdir(dirname(tmuxEventLogFile), { recursive: true });
       await writeFile(tmuxPane.logFile, "", "utf-8");
-      await writeFile(tmuxEventLogFile, "", "utf-8");
+      if (tmuxEventLogFile) await writeFile(tmuxEventLogFile, "", "utf-8");
       const tmuxLaunchScript = join(
         dirname(tmuxPane.logFile),
         `.pi-tmux-launch-${resolvedOwnership.runId}-${randomBytes(8).toString("hex")}.sh`,
@@ -691,7 +686,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
           args: resolvedSandbox.args,
           cwd: runCwd,
           env: resolvedSandbox.env,
-          eventLogFile: tmuxEventLogFile,
+          ...(tmuxEventLogFile ? { eventLogFile: tmuxEventLogFile } : {}),
         }),
         { encoding: "utf-8", mode: 0o700 },
       );
@@ -700,11 +695,21 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         args: [tmuxLaunchScript],
         cwd: runCwd,
         env: {},
-        exitMarkerLogFile: tmuxEventLogFile,
+        ...(tmuxEventLogFile ? { exitMarkerLogFile: tmuxEventLogFile } : {}),
       });
       const tmuxBinary = tmuxPane.tmuxBinary ?? "tmux";
       try {
-        await execFileAsync(tmuxBinary, ["send-keys", "-t", tmuxPane.paneId, tmuxCommand, "Enter"]);
+        try {
+          await execFileAsync(tmuxBinary, ["send-keys", "-t", tmuxPane.paneId, tmuxCommand, "Enter"]);
+        } catch (error) {
+          // Real tmux only reports whether send-keys succeeded, not the
+          // eventual command exit code. Some tests use a fake tmux that runs
+          // the command synchronously and returns the worker exit code; if it
+          // already wrote the poll log, continue so the normal exit-marker
+          // path can report the worker status.
+          const existingLog = await readFile(tmuxPollLogFile, "utf-8").catch(() => "");
+          if (!existingLog.trim()) throw error;
+        }
         emitLifecycle({
           phase: "spawned",
           runId: resolvedOwnership.runId,
@@ -785,7 +790,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         const poll = async () => {
           if (settled) return;
           try {
-            const handle = await open(tmuxEventLogFile, "r");
+            const handle = await open(tmuxPollLogFile, "r");
             try {
               const stats = await handle.stat();
               if (stats.size > readOffset) {

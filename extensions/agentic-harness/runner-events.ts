@@ -39,7 +39,7 @@ function renderPiEventForPane(event: any): string[] {
   switch (event.type) {
     case "message_end":
     case "turn_end":
-      return assistantTextParts(event.message).flatMap((text) => text.split(/\r?\n/).map(clampRenderedLine));
+      return assistantTextParts(event.message).flatMap((text) => text.split(/\r?\n/).map((line) => clampRenderedLine(line)));
     case "agent_end":
       return ["✓ worker completed"];
     case "tool_start":
@@ -139,36 +139,6 @@ function processPiEvent(event: any, result: SingleResult): boolean {
       return addAssistantMessages(result, event.messages);
     default:
       return false;
-  }
-}
-
-
-function extractAssistantText(message: any): string[] {
-  if (!message || message.role !== "assistant" || !Array.isArray(message.content)) return [];
-  return message.content
-    .filter((part: any) => part?.type === "text" && typeof part.text === "string" && part.text.length > 0)
-    .map((part: any) => part.text);
-}
-
-export function renderPiEventForPane(event: any): string[] {
-  if (!event || typeof event !== "object") return [];
-  switch (event.type) {
-    case "message_end":
-    case "turn_end":
-      return extractAssistantText(event.message);
-    case "agent_end":
-      return ["✓ worker completed"];
-    default:
-      return [];
-  }
-}
-
-export function renderPiJsonLineForPane(line: string): string[] {
-  if (!line.trim()) return [];
-  try {
-    return renderPiEventForPane(JSON.parse(line));
-  } catch {
-    return [line];
   }
 }
 
