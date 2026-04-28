@@ -56,8 +56,6 @@ Then use the slash commands:
 
 The `ask_user_question` tool is also available to the agent at all times — it will ask you questions autonomously whenever it detects ambiguity, even outside of `/clarify` mode.
 
-
-
 ## Lightweight Native Team Mode
 
 The `team` tool coordinates a small, bounded batch of existing pi subagents from the root session. Use it when a goal can be split into independent worker assignments and you want one synthesized result with task lifecycle status and explicit verification evidence. Use `subagent` directly for one-off delegation when you do not need team task records, lifecycle status, or final synthesis.
@@ -78,21 +76,21 @@ Example tool invocation shape:
 
 Parameters:
 
-| Field | Required | Notes |
-|---|---:|---|
-| `goal` | goal mode only | Root-level objective to split into dependency-free worker tasks. Omit in follow-up command mode. |
-| `workerCount` | no | Number of workers to dispatch; defaults to a small batch and is clamped by the tool. |
-| `agent` | no | Worker agent name; defaults to `worker`. |
-| `worktree` | no | When `true`, asks the existing subagent runner to isolate worker edits in git worktrees. |
-| `worktreePolicy` | no | Explicit worktree isolation policy: `off`, `on`, or `auto`. Defaults to legacy `worktree` boolean behavior. |
-| `backend` | no | Execution backend selection: `auto`, `native`, or `tmux`. Defaults to `auto`. |
-| `maxOutput` | no | Maximum characters of model-facing worker output retained in the final synthesis. |
-| `runId` | no | Optional durable run id for persisted team state. |
-| `resumeRunId` | no | Resume a previously persisted team run. |
-| `resumeMode` | no | Resume behavior for stale in-progress tasks: `mark-interrupted` or `retry-stale`. |
-| `staleTaskMs` | no | Age threshold for stale in-progress tasks during resume. |
-| `commandTarget` | follow-up mode | Worker owner or task id for an existing `resumeRunId`. |
-| `commandMessage` | follow-up mode | Durable command body to enqueue for the target. |
+| Field            |       Required | Notes                                                                                                       |
+| ---------------- | -------------: | ----------------------------------------------------------------------------------------------------------- |
+| `goal`           | goal mode only | Root-level objective to split into dependency-free worker tasks. Omit in follow-up command mode.            |
+| `workerCount`    |             no | Number of workers to dispatch; defaults to a small batch and is clamped by the tool.                        |
+| `agent`          |             no | Worker agent name; defaults to `worker`.                                                                    |
+| `worktree`       |             no | When `true`, asks the existing subagent runner to isolate worker edits in git worktrees.                    |
+| `worktreePolicy` |             no | Explicit worktree isolation policy: `off`, `on`, or `auto`. Defaults to legacy `worktree` boolean behavior. |
+| `backend`        |             no | Execution backend selection: `auto`, `native`, or `tmux`. Defaults to `auto`.                               |
+| `maxOutput`      |             no | Maximum characters of model-facing worker output retained in the final synthesis.                           |
+| `runId`          |             no | Optional durable run id for persisted team state.                                                           |
+| `resumeRunId`    |             no | Resume a previously persisted team run.                                                                     |
+| `resumeMode`     |             no | Resume behavior for stale in-progress tasks: `mark-interrupted` or `retry-stale`.                           |
+| `staleTaskMs`    |             no | Age threshold for stale in-progress tasks during resume.                                                    |
+| `commandTarget`  | follow-up mode | Worker owner or task id for an existing `resumeRunId`.                                                      |
+| `commandMessage` | follow-up mode | Durable command body to enqueue for the target.                                                             |
 
 Follow-up command mode uses the same `team` tool surface with `resumeRunId`, `commandTarget`, and `commandMessage`; it does not require `goal` and must not create a new run. The slash command equivalent is `/team resume=<runId> command=<worker|taskId> message="..."`.
 
@@ -102,6 +100,7 @@ Follow-up command mode uses the same `team` tool surface with `resumeRunId`, `co
 - `backend: "auto"` (default) prefers tmux when the binary is available and otherwise falls back to the native JSON subprocess backend.
 - `backend: "native"` uses the existing JSON subprocess backend without tmux.
 - `backend: "tmux"` requires tmux and records attach metadata for each worker pane.
+- Tmux users may see Pi's upstream keyboard warning when `extended-keys-format` is still the tmux default `xterm`. This warning is not a team-mode failure, but `set -g extended-keys on` plus `set -g extended-keys-format csi-u` in `~/.tmux.conf` gives the most reliable modified-key handling for interactive panes. Restart tmux after changing the file.
 - When `team` runs inside an existing tmux client, worker panes open automatically in the current tmux window; otherwise attach to a detached tmux-backed run with `tmux attach -t <session>`.
 - Tmux worker panes are intended to be human-readable real `pi` CLI sessions, not JSON event streams. The orchestrator reads durable state and output artifacts instead of making the visible pane log the source of truth.
 - Raw machine-readable event logs may still exist for orchestration/debugging, but they are separate from the visible worker pane UX.
