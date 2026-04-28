@@ -236,6 +236,9 @@ export async function createWorkerPanes(options: CreateWorkerPanesOptions): Prom
   const currentContext = await detectCurrentTmuxContext(commandRunner, binary, env);
   if (currentContext) {
     attachCommand = buildAttachCommand({ sessionName: currentContext.sessionName });
+    if ((env.PI_TEAM_MOUSE ?? "1") !== "0") {
+      await enableMouseScrolling(commandRunner, binary, currentContext.sessionName);
+    }
     for (let index = 1; index <= options.workerCount; index += 1) {
       const paneId = parsePaneIds(
         await runCommand(commandRunner, binary, ["split-window", "-t", currentContext.paneId, "-P", "-F", "#{pane_id}"]),
