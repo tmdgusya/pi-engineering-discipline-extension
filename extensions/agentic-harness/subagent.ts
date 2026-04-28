@@ -315,7 +315,7 @@ export function buildTmuxLaunchScript(params: {
       `${invocation} 2>&1 | node -e ${shellQuote(rendererProgram)}`,
       "code=${PIPESTATUS[0]}",
       `printf '\n${TMUX_EXIT_MARKER}%s\n' "$code" >> ${shellQuote(params.eventLogFile)}`,
-      "exit "$code"",
+      "exit \"$code\"",
       "",
     ].join("\n");
   }
