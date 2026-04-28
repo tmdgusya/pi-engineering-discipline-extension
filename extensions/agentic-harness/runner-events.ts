@@ -134,9 +134,11 @@ function processPiEvent(event: any, result: SingleResult): boolean {
       return addAssistantMessage(result, event.message);
     case "turn_end":
       return addAssistantMessage(result, event.message);
-    case "agent_end":
+    case "agent_end": {
+      const changed = !result.sawAgentEnd;
       result.sawAgentEnd = true;
-      return addAssistantMessages(result, event.messages);
+      return addAssistantMessages(result, event.messages) || changed;
+    }
     default:
       return false;
   }

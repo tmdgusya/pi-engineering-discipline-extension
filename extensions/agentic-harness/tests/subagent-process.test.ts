@@ -620,7 +620,7 @@ describe.runIf(process.platform !== "win32")("runAgent process ownership", () =>
 
     process.argv = [process.execPath, fixtureScript];
     const controller = new AbortController();
-    let sawSemanticOutput = false;
+    let sawSemanticCompletion = false;
 
     const runPromise = runAgent({
       agent: {
@@ -641,13 +641,14 @@ describe.runIf(process.platform !== "win32")("runAgent process ownership", () =>
       },
       signal: controller.signal,
       onUpdate: (partial) => {
-        sawSemanticOutput = partial.content.some((item) => item.type === "text" && item.text.includes("fixture complete"));
+        const result = partial.details?.results?.[0];
+        sawSemanticCompletion = !!result?.sawAgentEnd && partial.content.some((item) => item.type === "text" && item.text.includes("fixture complete"));
       },
       makeDetails: (results) => ({ mode: "single", results }),
     });
 
     await waitFor(() => !!loadState(stateFile).grandchildPid, 2000);
-    await waitFor(() => sawSemanticOutput, 2000);
+    await waitFor(() => sawSemanticCompletion, 2000);
     controller.abort();
     const result = await runPromise;
 

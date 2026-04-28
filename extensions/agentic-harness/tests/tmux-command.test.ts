@@ -104,7 +104,7 @@ describe("buildTmuxLaunchScript true CLI mode", () => {
       env: { PI_TEAM_WORKER: "1" },
     });
 
-    expect(script).toContain("exec env");
+    expect(script).toContain("exec /usr/bin/env");
     expect(script).toContain("'/usr/local/bin/pi'");
     expect(script).toContain("'-p'");
     expect(script).not.toContain("PI_TMUX_RENDERER");

@@ -22,6 +22,7 @@ export const MAX_PARALLEL_TASKS = 12;
 export const MAX_CONCURRENCY = 10;
 const KILL_TIMEOUT_MS = 5000;
 const AGENT_END_GRACE_MS = 1000;
+const ENV_COMMAND = "/usr/bin/env";
 
 const SUBAGENT_DEPTH_ENV = "PI_SUBAGENT_DEPTH";
 const SUBAGENT_MAX_DEPTH_ENV = "PI_SUBAGENT_MAX_DEPTH";
@@ -291,7 +292,7 @@ export function buildTmuxShellCommand(params: {
     .filter((entry): entry is [string, string] => entry[1] !== undefined)
     .map(([key, value]) => `${key}=${shellQuote(value)}`);
   const command = [shellQuote(params.command), ...params.args.map(shellQuote)].join(" ");
-  const invocation = ["env", ...envArgs, command].join(" ");
+  const invocation = [ENV_COMMAND, ...envArgs, command].join(" ");
   const markerTarget = params.exitMarkerLogFile
     ? ` >> ${shellQuote(params.exitMarkerLogFile)}`
     : "";
@@ -330,7 +331,7 @@ export function buildTmuxLaunchScript(params: {
     .filter((entry): entry is [string, string] => entry[1] !== undefined)
     .map(([key, value]) => `${key}=${shellQuote(value)}`);
   const command = [shellQuote(params.command), ...params.args.map(shellQuote)].join(" ");
-  const invocation = ["env", ...envArgs, command].join(" ");
+  const invocation = [ENV_COMMAND, ...envArgs, command].join(" ");
   return [
     "#!/usr/bin/env bash",
     `cd ${shellQuote(params.cwd)} || exit 1`,
