@@ -299,13 +299,26 @@ export function buildTmuxLaunchScript(params: {
   args: string[];
   cwd: string;
   env: Record<string, string | undefined>;
-  appendExitMarker?: boolean;
+  eventLogFile?: string;
 }): string {
   const envArgs = Object.entries(params.env)
     .filter((entry): entry is [string, string] => entry[1] !== undefined)
     .map(([key, value]) => `${key}=${shellQuote(value)}`);
   const command = [shellQuote(params.command), ...params.args.map(shellQuote)].join(" ");
   const invocation = ["env", ...envArgs, command].join(" ");
+  if (params.eventLogFile) {
+    const rendererProgram = buildPaneRendererProgram(params.eventLogFile);
+    return [
+      "#!/usr/bin/env bash",
+      "set -o pipefail",
+      `cd ${shellQuote(params.cwd)} || exit 1`,
+      `${invocation} 2>&1 | node -e ${shellQuote(rendererProgram)}`,
+      "code=${PIPESTATUS[0]}",
+      `printf '\n${TMUX_EXIT_MARKER}%s\n' "$code" >> ${shellQuote(params.eventLogFile)}`,
+      "exit "$code"",
+      "",
+    ].join("\n");
+  }
   return [
     "#!/usr/bin/env bash",
     `cd ${shellQuote(params.cwd)} || exit 1`,
@@ -313,6 +326,7 @@ export function buildTmuxLaunchScript(params: {
     "",
   ].join("\n");
 }
+
 
 function generateRunId(): string {
   return randomBytes(8).toString("hex");
