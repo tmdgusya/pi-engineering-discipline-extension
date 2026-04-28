@@ -21,6 +21,52 @@ export function getMessageSignature(message: unknown): string {
   return stableStringify(message);
 }
 
+
+function assistantTextParts(message: any): string[] {
+  if (!message || message.role !== "assistant" || !Array.isArray(message.content)) return [];
+  return message.content
+    .filter((part: any) => part?.type === "text" && typeof part.text === "string" && part.text.length > 0)
+    .map((part: any) => part.text);
+}
+
+function clampRenderedLine(line: string, limit = 8000): string {
+  if (line.length <= limit) return line;
+  return `${line.slice(0, limit)}… [truncated ${line.length - limit} chars]`;
+}
+
+function renderPiEventForPane(event: any): string[] {
+  if (!event || typeof event !== "object") return [];
+  switch (event.type) {
+    case "message_end":
+    case "turn_end":
+      return assistantTextParts(event.message).flatMap((text) => text.split(/\r?\n/).map(clampRenderedLine));
+    case "agent_end":
+      return ["✓ worker completed"];
+    case "tool_start":
+      return typeof event.name === "string" ? [`→ ${event.name}`] : [];
+    case "tool_end":
+      return typeof event.name === "string" ? [`✓ ${event.name}`] : [];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Render a pi JSON-mode stdout line into human-readable tmux pane text.
+ * Raw JSON event envelopes are intentionally suppressed; invalid non-empty
+ * lines are passed through because they may be command output or diagnostics.
+ */
+export function renderPiJsonLineForPane(line: string): string[] {
+  if (!line.trim()) return [];
+  let event: any;
+  try {
+    event = JSON.parse(line);
+  } catch {
+    return [line];
+  }
+  return renderPiEventForPane(event);
+}
+
 function updateMetadata(result: SingleResult, message: any): void {
   if (message.role !== "assistant") return;
   if (!result.model && message.model) result.model = message.model;

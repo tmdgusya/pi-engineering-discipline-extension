@@ -15,6 +15,7 @@ export interface TmuxPaneRef {
   paneId: string;
   attachCommand: string;
   logFile: string;
+  eventLogFile: string;
   tmuxBinary?: string;
   sessionAttempt?: string;
   placement?: "detached-session" | "current-window";
@@ -165,6 +166,7 @@ export async function createWorkerPanes(options: CreateWorkerPanesOptions): Prom
       if (!paneId) throw new Error(`tmux did not return a pane id for worker ${index}`);
 
       const logFile = join(options.logDir, `task-${index}.log`);
+      const eventLogFile = join(options.logDir, `task-${index}.events.jsonl`);
       await pipePane(commandRunner, binary, paneId, logFile);
       paneRefs.push({
         sessionName: currentContext.sessionName,
@@ -172,6 +174,7 @@ export async function createWorkerPanes(options: CreateWorkerPanesOptions): Prom
         paneId,
         attachCommand,
         logFile,
+        eventLogFile,
         placement: "current-window",
         ...(options.binary ? { tmuxBinary: binary } : {}),
       });
@@ -207,6 +210,7 @@ export async function createWorkerPanes(options: CreateWorkerPanesOptions): Prom
   if (!firstPaneId) throw new Error("tmux did not return a pane id for the new session");
 
   const firstLogFile = join(options.logDir, "task-1.log");
+  const firstEventLogFile = join(options.logDir, "task-1.events.jsonl");
   await pipePane(commandRunner, binary, firstPaneId, firstLogFile);
   paneRefs.push({
     sessionName,
@@ -214,6 +218,7 @@ export async function createWorkerPanes(options: CreateWorkerPanesOptions): Prom
     paneId: firstPaneId,
     attachCommand,
     logFile: firstLogFile,
+    eventLogFile: firstEventLogFile,
     placement: "detached-session",
     ...(options.binary ? { tmuxBinary: binary } : {}),
     ...(sessionAttempt ? { sessionAttempt } : {}),
@@ -226,6 +231,7 @@ export async function createWorkerPanes(options: CreateWorkerPanesOptions): Prom
     if (!paneId) throw new Error(`tmux did not return a pane id for worker ${index}`);
 
     const logFile = join(options.logDir, `task-${index}.log`);
+    const eventLogFile = join(options.logDir, `task-${index}.events.jsonl`);
     await pipePane(commandRunner, binary, paneId, logFile);
     paneRefs.push({
       sessionName,
@@ -233,6 +239,7 @@ export async function createWorkerPanes(options: CreateWorkerPanesOptions): Prom
       paneId,
       attachCommand,
       logFile,
+      eventLogFile,
       placement: "detached-session",
       ...(options.binary ? { tmuxBinary: binary } : {}),
       ...(sessionAttempt ? { sessionAttempt } : {}),
