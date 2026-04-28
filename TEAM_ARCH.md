@@ -25,6 +25,54 @@ user tutorial.
 
 ---
 
+## Architecture diagram
+
+```mermaid
+flowchart TD
+  User["User / root pi session"] --> Command["/team command or team tool"]
+  Command --> Index["index.ts<br/>tool registration, UI callbacks, persistence wiring"]
+  Index --> RunTeam["team.ts<br/>runTeam orchestrator"]
+
+  RunTeam --> Validate["Validate mode<br/>fresh run or follow-up command"]
+  Validate --> Backend["Resolve backend<br/>detectTmux: auto/native/tmux"]
+  Backend --> State["team-state.ts<br/>TeamRunRecord"]
+
+  State --> RunFile[(".pi/agent/runs/&lt;runId&gt;/team-run.json")]
+  State --> Commands["commands[]<br/>assignment + follow-up lifecycle"]
+  State --> Events["events[] / messages[]<br/>audit + inbox/outbox history"]
+
+  Backend --> Native{"backendUsed"}
+  Native -- "native" --> NativeTerminal["task.terminal = native"]
+  Native -- "tmux" --> Tmux["tmux.ts<br/>createWorkerPanes"]
+  Tmux --> Placement{"tmux placement"}
+  Placement -- "inside tmux" --> CurrentWindow["split current window<br/>one pane per worker"]
+  Placement -- "outside tmux" --> Detached["detached session<br/>pi-&lt;runId&gt;"]
+  CurrentWindow --> TmuxTerminal["task.terminal = tmux pane metadata"]
+  Detached --> TmuxTerminal
+
+  NativeTerminal --> Scheduler["Parallel scheduler<br/>MAX_CONCURRENCY = 10"]
+  TmuxTerminal --> Scheduler
+  Scheduler --> WorkerCommand["enqueue + acknowledge + start command"]
+  WorkerCommand --> Subagent["subagent.ts<br/>runAgent"]
+  Subagent --> Launch{"executionMode"}
+  Launch -- "native" --> NativeProcess["spawn pi subagent<br/>JSON coordination"]
+  Launch -- "tmux" --> TmuxPane["send readable pi CLI into pane<br/>artifact output + event log side-channel"]
+
+  NativeProcess --> Result["SingleResult"]
+  TmuxPane --> Result
+  Result --> Complete["complete/fail command<br/>complete/fail task"]
+  Complete --> State
+  Complete --> Synthesis["synthesizeTeamRun<br/>TeamRunSummary"]
+  Synthesis --> Cleanup["tmux cleanup on all-success<br/>preserve panes/session on failure"]
+  Cleanup --> User
+
+  Command -. "resumeRunId + target + message" .-> FollowUp["follow-up command mode"]
+  FollowUp --> State
+  FollowUp --> WorkerCommand
+```
+
+---
+
 ## Invariants
 
 These are properties the codebase assumes; do not break them without updating

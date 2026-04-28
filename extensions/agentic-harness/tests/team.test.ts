@@ -809,6 +809,59 @@ describe("runTeam", () => {
     expect(summary.verificationEvidence.failed).toBe(true);
   });
 
+  it("formats team results with a result-first summary before worker details", () => {
+    const [task1, task2] = createDefaultTeamTasks("Draw architecture", 2, "worker");
+    task1.status = "completed";
+    task1.resultSummary = [
+      "# Worker 1 Final Report",
+      "",
+      "## Changed files",
+      "- `TEAM_ARCH.md` — added a Mermaid flowchart.",
+      "",
+      "## Verification performed",
+      "- `git diff --check` — PASS.",
+      "",
+      "## Blockers/risks",
+      "- none",
+    ].join("\n");
+    task2.status = "completed";
+    task2.resultSummary = [
+      "# Worker 2 Final Report",
+      "",
+      "## Changed files",
+      "- `docs/engineering-discipline/harness/team-mode-architecture.md` — added a Mermaid flowchart.",
+      "",
+      "## Verification",
+      "- `python3` sanity check — PASS.",
+      "",
+      "## Blockers/risks",
+      "- None.",
+    ].join("\n");
+
+    const summary = synthesizeTeamRun("Draw architecture", [task1, task2], [
+      fakeResult("worker", "prompt", task1.resultSummary),
+      fakeResult("worker", "prompt", task2.resultSummary),
+    ]);
+
+    const formatted = formatTeamRunSummary(summary);
+
+    expect(formatted).toMatch(/^Team completed: 2\/2 tasks completed for goal: Draw architecture/);
+    expect(formatted.indexOf("## Summary")).toBeLessThan(formatted.indexOf("## Worker Details"));
+    expect(formatted.indexOf("## Outputs")).toBeLessThan(formatted.indexOf("## Worker Details"));
+    expect(formatted).toContain("- Goal: Draw architecture");
+    expect(formatted).toContain("- Backend: native");
+    expect(formatted).toContain("- `TEAM_ARCH.md` — added a Mermaid flowchart.");
+    expect(formatted).toContain("- `docs/engineering-discipline/harness/team-mode-architecture.md` — added a Mermaid flowchart.");
+    expect(formatted).toContain("- PASS: 2/2 worker tasks completed.");
+    expect(formatted).toContain("- `git diff --check` — PASS.");
+    expect(formatted).toContain("- `python3` sanity check — PASS.");
+    expect(formatted).toContain("## Risks / Blockers");
+    expect(formatted).toContain("- None reported.");
+    expect(formatted).toContain("## Worker Details");
+    expect(formatted).toContain("# Worker 1 Final Report");
+    expect(formatted).toContain("Structured verification evidence:");
+  });
+
   it("formats structured verification evidence without dropping refs or failure details", () => {
     const [task] = createDefaultTeamTasks("Summarize partial run", 1, "worker");
     task.status = "failed";

@@ -335,10 +335,100 @@ export function synthesizeTeamRun(
   };
 }
 
+function normalizeWorkerReportItem(line: string): string | undefined {
+  const trimmed = line.trim();
+  if (!trimmed) return undefined;
+  if (/^[-*]\s+(none|none\.|no blockers|no blockers\.|n\/a)$/i.test(trimmed)) return undefined;
+  if (/^(none|none\.|no blockers|no blockers\.|n\/a)$/i.test(trimmed)) return undefined;
+  if (/^#{1,6}\s+/.test(trimmed)) return undefined;
+  if (/^[-*]\s+/.test(trimmed)) return trimmed;
+  return `- ${trimmed}`;
+}
+
+function uniqueItems(items: string[]): string[] {
+  return Array.from(new Set(items));
+}
+
+function extractWorkerReportSection(summaryText: string | undefined, headingMatchers: RegExp[]): string[] {
+  if (!summaryText) return [];
+  const lines = summaryText.split(/\r?\n/);
+  const items: string[] = [];
+  let collecting = false;
+
+  for (const line of lines) {
+    const heading = line.match(/^#{1,6}\s+(.+)\s*$/);
+    if (heading) {
+      collecting = headingMatchers.some((matcher) => matcher.test(heading[1].trim()));
+      continue;
+    }
+    if (!collecting) continue;
+    const item = normalizeWorkerReportItem(line);
+    if (item) items.push(item);
+  }
+
+  return uniqueItems(items);
+}
+
+function collectWorkerOutputs(tasks: TeamTask[]): string[] {
+  return uniqueItems(tasks.flatMap((task) => extractWorkerReportSection(task.resultSummary, [
+    /^(changed files|files changed|outputs?|changed files\/outputs?)$/i,
+  ])));
+}
+
+function collectWorkerVerification(tasks: TeamTask[]): string[] {
+  return uniqueItems(tasks.flatMap((task) => extractWorkerReportSection(task.resultSummary, [
+    /^(verification|verification performed|checks|tests)$/i,
+  ])));
+}
+
+function collectWorkerRisks(tasks: TeamTask[]): string[] {
+  const reportedRisks = tasks.flatMap((task) => extractWorkerReportSection(task.resultSummary, [
+    /^(blockers|blockers\/risks|risks|remaining blockers)$/i,
+  ]));
+  const taskFailures = tasks
+    .filter((task) => task.errorMessage)
+    .map((task) => `- ${task.id}: ${task.errorMessage}`);
+  return uniqueItems([...reportedRisks, ...taskFailures]);
+}
+
+function formatWorkerDetails(tasks: TeamTask[]): string[] {
+  return tasks.map((task) => [
+    `### ${task.id} (${task.owner}, ${task.agent}): ${task.status}`,
+    task.resultSummary || "No worker report captured.",
+    task.terminal?.attachCommand ? `Attach: ${task.terminal.attachCommand}` : undefined,
+    task.errorMessage ? `Error: ${task.errorMessage}` : undefined,
+  ].filter(Boolean).join("\n"));
+}
+
 export function formatTeamRunSummary(summary: TeamRunSummary): string {
   const evidence = summary.verificationEvidence;
+  const outputs = collectWorkerOutputs(summary.tasks);
+  const workerVerification = collectWorkerVerification(summary.tasks);
+  const risks = collectWorkerRisks(summary.tasks);
+  const statusWord = summary.success ? "completed" : "finished with failures";
+  const verificationStatus = evidence.passed ? "PASS" : "FAIL";
+
   return [
-    summary.finalSynthesis,
+    `Team ${statusWord}: ${summary.completedCount}/${summary.taskCount} tasks completed for goal: ${summary.goal}`,
+    "",
+    "## Summary",
+    `- Goal: ${summary.goal}`,
+    `- Backend: ${summary.backendUsed}`,
+    `- Tasks: ${summary.completedCount}/${summary.taskCount} completed, ${summary.failedCount} failed, ${summary.blockedCount} blocked.`,
+    `- Result: ${summary.success ? "All worker tasks completed." : "One or more worker tasks did not complete successfully."}`,
+    "",
+    "## Outputs",
+    ...(outputs.length > 0 ? outputs : ["- No changed files or outputs were reported by workers."]),
+    "",
+    "## Verification",
+    `- ${verificationStatus}: ${summary.completedCount}/${summary.taskCount} worker tasks completed.`,
+    ...(workerVerification.length > 0 ? workerVerification : ["- No worker-reported verification commands were captured."]),
+    "",
+    "## Risks / Blockers",
+    ...(risks.length > 0 ? risks : ["- None reported."]),
+    "",
+    "## Worker Details",
+    ...formatWorkerDetails(summary.tasks),
     "",
     "Structured verification evidence:",
     `- checksRun: ${evidence.checksRun.join("; ") || "none"}`,

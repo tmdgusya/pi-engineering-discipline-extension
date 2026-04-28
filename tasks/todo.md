@@ -1,5 +1,32 @@
 # Task: Selective pi-subagents Feature Adoption Milestone Plan
 
+## Plan: Team mode architecture mermaid diagram (worker-1)
+
+Done when:
+- [x] Inspect existing team mode architecture documentation/source enough to avoid inventing components
+- [x] Add a bounded Mermaid diagram for the team mode architecture
+- [x] Verify the Markdown/Mermaid syntax and repository diff
+- [x] Write required final worker report
+
+### Review
+- Added a bounded Mermaid flowchart to `TEAM_ARCH.md` showing user/tool entry, `index.ts`, `runTeam`, state persistence, backend selection, native/tmux worker execution, command lifecycle, synthesis, cleanup, and follow-up command flow.
+- Verification passed: `git diff --check`; Node script confirmed exactly one Mermaid block with expected architecture nodes.
+- Remaining blockers: none.
+
+## Plan: Team mode architecture mermaid diagram (worker-2)
+
+Done when:
+- [x] Inspect existing team mode architecture documentation/source enough to avoid inventing components
+- [x] Add a bounded Mermaid diagram for the team mode architecture without changing runtime code
+- [x] Verify the Markdown/Mermaid syntax and repository diff
+- [x] Write required final worker report to the assigned final.md path
+
+### Review
+- Added `docs/engineering-discipline/harness/team-mode-architecture.md` with a Mermaid flowchart of the team mode architecture, covering `/team` entry, root tool registration, `runTeam`, durable state, backend selection, native/tmux dispatch, worker guards, results, synthesis, and follow-up command flow.
+- Verification passed: Python sanity checks confirmed one balanced Mermaid block and expected architecture nodes; `git diff --check` passed.
+- Remaining blockers: none.
+
+
 **Created:** 2026-04-24 22:13
 **Status:** milestone-planning
 
