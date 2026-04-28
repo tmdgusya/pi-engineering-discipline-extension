@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.12.0](https://github.com/tmdgusya/roach-pi/compare/v1.11.0...v1.12.0) (2026-04-28)
+
+### Features
+
+* add team backend selection contract ([9444b54](https://github.com/tmdgusya/roach-pi/commit/9444b545a752d0c6967f50648d4b294bb3cf7974))
+* add team command flow and tmux plans ([d5959ac](https://github.com/tmdgusya/roach-pi/commit/d5959ac6ead67916b7b71cb8edce1b35b524cd30))
+* add tmux helper module for team backend ([9c11abe](https://github.com/tmdgusya/roach-pi/commit/9c11abee48240e75c623b6c125c461a027d2f51a))
+* integrate optional tmux backend for team workers ([ae6ff4b](https://github.com/tmdgusya/roach-pi/commit/ae6ff4b74cec883770be9a89147ab7a6d5b3dc6a))
+* **team-tmux:** add session-scoped mouse-scroll helper for tmux backend ([f0b323c](https://github.com/tmdgusya/roach-pi/commit/f0b323cfd401c32355d1dbf92b50cb1762a9bb4c))
+* **team-tmux:** also enable mouse-scroll in current-window split branch ([8ee1603](https://github.com/tmdgusya/roach-pi/commit/8ee16034d214941ff15ca7dce9476132d875bf71))
+* **team-tmux:** wire enableMouseScrolling into detached team sessions ([fa48444](https://github.com/tmdgusya/roach-pi/commit/fa4844454de341b0cfa7c840f0800a48cb931770))
+
+### Bug Fixes
+
+* **agentic-harness:** import Type from @sinclair/typebox ([7a1e524](https://github.com/tmdgusya/roach-pi/commit/7a1e524d22cb0d981a9e8f7351cad1b0d1f826e3))
+* handle tmux setup failures and session collisions ([0bedd7c](https://github.com/tmdgusya/roach-pi/commit/0bedd7c7f0ad3068227ba8f955756256aff6087f))
+* harden tmux runtime log and lifecycle handling ([f2c682a](https://github.com/tmdgusya/roach-pi/commit/f2c682abf19c788d4e2d862952f884b99b4095eb))
+* harden tmux shell command handling ([1f1907c](https://github.com/tmdgusya/roach-pi/commit/1f1907c61d2fddd8c67c35efc8f528105ea444fc))
+* restore agentic harness strict build ([97e939b](https://github.com/tmdgusya/roach-pi/commit/97e939b4334c58534c3c307efa1b99a318002590))
+* type tmux availability mock ([f0e0e12](https://github.com/tmdgusya/roach-pi/commit/f0e0e12bf5c1d80b2a2200f7fde132086c3bd55a))
+* use resolved tmux binary for worker send-keys ([e80f23f](https://github.com/tmdgusya/roach-pi/commit/e80f23f319dc68b7afc21e2ab75c9bf870354965))
+
+### Documentation
+
+* clarify tmux cleanup and sandbox caveats ([94302e3](https://github.com/tmdgusya/roach-pi/commit/94302e36624673776221699bae8a383b33574f31))
+* describe team tmux backend and fallback behavior ([dc536b0](https://github.com/tmdgusya/roach-pi/commit/dc536b0b2f00fcb04aa9700b0c26e74e8ba5f941))
+* explain parser usage in features ([948b718](https://github.com/tmdgusya/roach-pi/commit/948b71834ddaf351de3dc1aba55536ca94cd9f55))
+* plan team-mode testing docs release ([ee09c15](https://github.com/tmdgusya/roach-pi/commit/ee09c155fa4cc6068c5e7d4ab43c6706a8f722c8))
+* plan team-mode testing docs release ([e04af79](https://github.com/tmdgusya/roach-pi/commit/e04af79706bdd968408572838933d7faab077cf1))
+
+### Miscellaneous
+
+* update package-lock.json ([6222c5e](https://github.com/tmdgusya/roach-pi/commit/6222c5e5eb47f4f80ae54a143f438c7c9cb0b325))
+
 ## [1.11.0](https://github.com/tmdgusya/roach-pi/compare/v1.10.0...v1.11.0) (2026-04-24)
 
 ### Features
