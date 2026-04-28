@@ -183,3 +183,22 @@ Done when:
 - Manual success criteria: PASS — residual issue fixed by typing `RunAgentOptions.tmuxPane.tmuxBinary/sessionAttempt`, removing the `index.ts` cast, and using `tmuxPane.tmuxBinary ?? "tmux"` for tmux runtime `send-keys` launch and C-c termination. Added regression coverage proving a custom tmux binary handles `send-keys`.
 - Manual success criteria verified as covered by code/tests: shell-quoted `pipe-pane` log paths, stderr-only tmux helper warnings, detected tmux binary propagation through setup/runtime/cleanup, stale marker truncation, duplicate `tee` removal, useful tmux failure log tail, setup failure persistence, collision retry without deleting existing sessions, incremental log polling, tmux lifecycle/process-log events, and native behavior regression coverage.
 - Hardening commits relevant to this work: `1f1907c fix: harden tmux shell command handling`; `f2c682a fix: harden tmux runtime log and lifecycle handling`; `0bedd7c fix: handle tmux setup failures and session collisions`; `94302e3 docs: clarify tmux cleanup and sandbox caveats`; `e80f23f fix: use resolved tmux binary for worker send-keys`.
+
+## Bug Fix Plan: GitHub CI TypeScript build failure
+
+Done when:
+- [x] Reproduce the CI-equivalent failure locally
+- [x] Identify the exact TypeScript type regression causing `npm run build` to fail in `extensions/agentic-harness`
+- [x] Add or confirm guard coverage for tool argument parsing types
+- [x] Apply the smallest fix that restores strict build compatibility
+- [x] Verify the CI command sequence passes: `npm ci && cd extensions/agentic-harness && npm ci && npm test && npm run build`
+
+### Initial reproduction
+- `npm ci && cd extensions/agentic-harness && npm ci && npm test && npm run build` reproduced the GitHub Release workflow build failure.
+- Tests passed, but `tsc --noEmit` failed in `extensions/agentic-harness/index.ts` with `unknown`/`{}` values passed into typed options.
+
+### Bug fix results
+- Root cause: enum-like tool schemas used `Type.Unsafe<"literal-union">(...)`; with the current TypeBox typings this makes the static parameter type `unknown`/`{}` while preserving the runtime JSON schema, so strict TypeScript rejected those values when passed to typed runtime APIs.
+- Fix applied: added a small `stringEnum()` schema helper in `extensions/agentic-harness/index.ts` that preserves the existing `{ type: "string", enum: [...] }` JSON schema while giving TypeScript the intended literal-union static type.
+- Guard coverage confirmed: `tests/extension.test.ts` verifies the documented team tool parameter schema still exposes `type: "string"` and `enum` values.
+- Verification: PASS — `npm ci && cd extensions/agentic-harness && npm ci && npm test && npm run build` (37 files, 370 tests).

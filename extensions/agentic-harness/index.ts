@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createBashTool, isToolCallEventType, keyHint, keyText, rawKeyHint } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { Type } from "@sinclair/typebox";
+import { Type, type TUnsafe } from "@sinclair/typebox";
 import { RoachFooter, type CacheStats, type ActiveTools } from "./footer.js";
 import { homedir } from "os";
 import { join, dirname, resolve } from "path";
@@ -43,6 +43,19 @@ let activeGoalDocument: string | null = null;
 const cacheStats: CacheStats = { totalInput: 0, totalCacheRead: 0 };
 
 const activeTools: ActiveTools = { running: new Map() };
+
+type StringEnumSchema<T extends string> = TUnsafe<T> & {
+  type: "string";
+  enum: T[];
+};
+
+function stringEnum<T extends string>(values: readonly T[], options: { description: string; default?: T }): StringEnumSchema<T> {
+  return Type.Unsafe<T>({
+    type: "string",
+    enum: [...values],
+    ...options,
+  }) as StringEnumSchema<T>;
+}
 
 export default function (pi: ExtensionAPI) {
   const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -209,8 +222,7 @@ export default function (pi: ExtensionAPI) {
     task: Type.Optional(Type.String({ description: "Task description for single mode execution" })),
     tasks: Type.Optional(Type.Array(TaskItem, { description: `Array of {agent, task} objects for parallel execution (max ${MAX_PARALLEL_TASKS})` })),
     chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} objects for sequential chaining. Use {previous} in task to reference prior output." })),
-    agentScope: Type.Optional(Type.Unsafe<"user" | "project" | "both">({
-      type: "string", enum: ["user", "project", "both"],
+    agentScope: Type.Optional(stringEnum(["user", "project", "both"], {
       description: 'Which agent directories to search. Default: "user".',
       default: "user",
     })),
@@ -219,7 +231,9 @@ export default function (pi: ExtensionAPI) {
     output: Type.Optional(Type.String({ description: "Artifact-relative file path where the subagent should write its final output" })),
     reads: Type.Optional(Type.Array(Type.String(), { description: "Files to include as declared read context for the subagent" })),
     progress: Type.Optional(Type.String({ description: "Artifact-relative file path for progress notes" })),
-    context: Type.Optional(Type.Unsafe<"fresh" | "fork">({ type: "string", enum: ["fresh", "fork"], description: "Session context mode. fresh preserves --no-session; fork requires PI_SUBAGENT_FORK_SESSION and fails fast if unavailable." })),
+    context: Type.Optional(stringEnum(["fresh", "fork"], {
+      description: "Session context mode. fresh preserves --no-session; fork requires PI_SUBAGENT_FORK_SESSION and fails fast if unavailable.",
+    })),
     worktree: Type.Optional(Type.Boolean({ description: "Run parallel tasks in isolated git worktrees and capture per-task diffs." })),
     planFile: Type.Optional(Type.String({ description: "Path to plan file. Required when agent is plan-validator — the validator prompt is built from this file, not from the task field." })),
     planTaskId: Type.Optional(Type.Number({ description: "Task number in the plan file to validate (e.g. 1 for Task 1). Required when agent is plan-validator." })),
@@ -231,28 +245,21 @@ export default function (pi: ExtensionAPI) {
     goal: Type.Optional(Type.String({ description: "Goal for the lightweight native team run. Omit only in follow-up command mode." })),
     workerCount: Type.Optional(Type.Number({ description: `Number of workers to dispatch (max ${MAX_PARALLEL_TASKS})` })),
     agent: Type.Optional(Type.String({ description: "Worker agent name. Default: worker" })),
-    agentScope: Type.Optional(Type.Unsafe<"user" | "project" | "both">({
-      type: "string", enum: ["user", "project", "both"],
+    agentScope: Type.Optional(stringEnum(["user", "project", "both"], {
       description: 'Which agent directories to search. Default: "user".',
       default: "user",
     })),
     worktree: Type.Optional(Type.Boolean({ description: "Run team workers in isolated git worktrees" })),
-    worktreePolicy: Type.Optional(Type.Unsafe<"off" | "on" | "auto">({
-      type: "string",
-      enum: ["off", "on", "auto"],
+    worktreePolicy: Type.Optional(stringEnum(["off", "on", "auto"], {
       description: "Worktree isolation policy. Defaults to the legacy worktree boolean behavior.",
     })),
-    backend: Type.Optional(Type.Unsafe<"auto" | "native" | "tmux">({
-      type: "string",
-      enum: ["auto", "native", "tmux"],
+    backend: Type.Optional(stringEnum(["auto", "native", "tmux"], {
       description: "Execution backend selection for team workers. auto prefers tmux when available.",
     })),
     maxOutput: Type.Optional(Type.Number({ description: "Maximum characters of model-facing worker output to retain" })),
     runId: Type.Optional(Type.String({ description: "Optional durable team run id for persisted state" })),
     resumeRunId: Type.Optional(Type.String({ description: "Resume a previously persisted team run id" })),
-    resumeMode: Type.Optional(Type.Unsafe<"mark-interrupted" | "retry-stale">({
-      type: "string",
-      enum: ["mark-interrupted", "retry-stale"],
+    resumeMode: Type.Optional(stringEnum(["mark-interrupted", "retry-stale"], {
       description: "How to handle stale in-progress tasks when resuming.",
     })),
     staleTaskMs: Type.Optional(Type.Number({ description: "Age in milliseconds before in-progress resume tasks are stale" })),
