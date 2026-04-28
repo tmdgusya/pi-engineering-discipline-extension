@@ -80,7 +80,7 @@ Parameters:
 
 | Field | Required | Notes |
 |---|---:|---|
-| `goal` | yes | Root-level objective to split into dependency-free worker tasks. |
+| `goal` | goal mode only | Root-level objective to split into dependency-free worker tasks. Omit in follow-up command mode. |
 | `workerCount` | no | Number of workers to dispatch; defaults to a small batch and is clamped by the tool. |
 | `agent` | no | Worker agent name; defaults to `worker`. |
 | `worktree` | no | When `true`, asks the existing subagent runner to isolate worker edits in git worktrees. |
@@ -91,6 +91,10 @@ Parameters:
 | `resumeRunId` | no | Resume a previously persisted team run. |
 | `resumeMode` | no | Resume behavior for stale in-progress tasks: `mark-interrupted` or `retry-stale`. |
 | `staleTaskMs` | no | Age threshold for stale in-progress tasks during resume. |
+| `commandTarget` | follow-up mode | Worker owner or task id for an existing `resumeRunId`. |
+| `commandMessage` | follow-up mode | Durable command body to enqueue for the target. |
+
+Follow-up command mode uses the same `team` tool surface with `resumeRunId`, `commandTarget`, and `commandMessage`; it does not require `goal` and must not create a new run. The slash command equivalent is `/team resume=<runId> command=<worker|taskId> message="..."`.
 
 ### MVP behavior and stable summary contract
 
@@ -99,25 +103,26 @@ Parameters:
 - `backend: "native"` uses the existing JSON subprocess backend without tmux.
 - `backend: "tmux"` requires tmux and records attach metadata for each worker pane.
 - When `team` runs inside an existing tmux client, worker panes open automatically in the current tmux window; otherwise attach to a detached tmux-backed run with `tmux attach -t <session>`.
-- Tmux worker panes are intended to be human-readable: standard pi JSON events are rendered into concise worker conversation/progress text in the visible pane and `task-N.log` pane log.
-- Raw machine-readable pi JSON events are kept separately in a per-task event log such as `task-N.events.jsonl`; the orchestrator uses that event log for completion/result parsing when it is present.
+- Tmux worker panes are intended to be human-readable real `pi` CLI sessions, not JSON event streams. The orchestrator reads durable state and output artifacts instead of making the visible pane log the source of truth.
+- Raw machine-readable event logs may still exist for orchestration/debugging, but they are separate from the visible worker pane UX.
 - Failed tmux team runs intentionally leave tmux panes/sessions alive for debugging. Detached runs can be inspected with `tmux ls` and cleaned up with `tmux kill-session -t <session>`.
 - If a tmux session collision occurs, retry sessions may use a suffixed session name; the actual attach command is recorded in the run summary and persisted state.
 - The tmux backend runs the resolved sandbox command inside a tmux pane. Treat sandbox parity as tested for wrapper invocation, not as pane embedding isolation.
-- Operator interaction happens through the existing tmux client and pane controls; detached runs still use tmux attach/switch-pane rather than a new pi-side control channel.
+- Operator interaction happens through the existing tmux client and pane controls; durable command state remains authoritative when pane wake-up/injection fails.
 - Dispatches workers through the selected backend and preserves normal subagent depth/cycle safeguards.
 - Runs team workers with `PI_TEAM_WORKER=1`, which suppresses recursive orchestration tools such as `team` and `subagent` inside workers.
 - Returns a `TeamRunSummary` with stable user-facing fields: `goal`, `ok`/`success`, `completedCount`, `failedCount`, `tasks`, `finalSynthesis`, and `verificationEvidence`.
 - Keeps each task's status, owner, output summary, artifact references, and worktree references when present.
-- Can persist durable run records under `.pi/agent/runs/<runId>/team-run.json`, including task lifecycle events and recorded inbox/outbox messages.
-- Can conservatively resume persisted runs by preserving terminal task state and marking stale in-progress tasks interrupted unless explicitly retried.
+- Persists durable run records under `.pi/agent/runs/<runId>/team-run.json`, including task lifecycle events, recorded inbox/outbox audit messages, and `commands[]` lifecycle records.
+- Treats `commands[]` as the authoritative inbox/command source of truth. `messages[]` remains audit/history.
+- Command retries keep the same command id and increment `attempt`; attempts are capped at 1, 2, and 3. A retry requested while already on attempt 3 marks the command blocked with evidence.
+- Can conservatively resume persisted runs by preserving terminal task state and marking stale in-progress tasks/commands interrupted unless explicitly retried.
 - Reports the run as incomplete/failed when any worker fails; partial worker success must not be synthesized as full team success.
 
 ### Deferred parity milestones
 
 The lightweight team implementation intentionally defers heavier team-runtime features until they are implemented and tested:
 
-- Live worker chat/control beyond recorded inbox/outbox messages
 - Rich heartbeat/status dashboards beyond persisted run snapshots
 - Full staged pipelines such as plan → PRD → exec → verify → fix
 - In-pi pane embedding and direct pi-side keystroke routing to workers

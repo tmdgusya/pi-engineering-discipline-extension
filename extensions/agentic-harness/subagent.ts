@@ -2,7 +2,7 @@
 import { execFile, spawn } from "child_process";
 import { appendFile, mkdir, open, readFile, writeFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
-import { join, basename, dirname, relative, extname } from "path";
+import { join, basename, dirname, relative } from "path";
 import { randomBytes } from "crypto";
 import { existsSync } from "fs";
 import type { AgentConfig, SubagentContextMode } from "./agents.js";
@@ -20,7 +20,7 @@ import { shellQuote } from "./shell.js";
 export const MAX_PARALLEL_TASKS = 12;
 export const MAX_CONCURRENCY = 10;
 const KILL_TIMEOUT_MS = 5000;
-const AGENT_END_GRACE_MS = 250;
+const AGENT_END_GRACE_MS = 1000;
 
 const SUBAGENT_DEPTH_ENV = "PI_SUBAGENT_DEPTH";
 const SUBAGENT_MAX_DEPTH_ENV = "PI_SUBAGENT_MAX_DEPTH";
@@ -162,13 +162,13 @@ async function writeTempSystemPrompt(content: string): Promise<string> {
   return filepath;
 }
 
-function buildPiArgs(agent: AgentConfig | undefined, systemPromptPath: string | null, task: string, contextMode: SubagentContextMode = "fresh"): string[] {
+export function buildPiArgs(agent: AgentConfig | undefined, systemPromptPath: string | null, task: string, contextMode: SubagentContextMode = "fresh", outputMode: "json" | "text" = "json", printMode = true): string[] {
   const inherited = getInheritedCliArgs();
   const args = [
-    "--mode", "json",
+    ...(outputMode === "json" ? ["--mode", "json"] : []),
     ...inherited.extensionArgs,
     ...inherited.alwaysProxy,
-    "-p",
+    ...(printMode ? ["-p"] : []),
   ];
 
   if (contextMode === "fork") {
@@ -297,89 +297,26 @@ export function buildTmuxShellCommand(params: {
   return `{ cd ${shellQuote(params.cwd)} && ${invocation}; code=$?; printf '\\n${TMUX_EXIT_MARKER}%s\\n' "$code"${markerTarget}; exit "$code"; } 2>&1`;
 }
 
-function buildReadableTmuxNodeScript(params: {
-  command: string;
-  args: string[];
-  env: Record<string, string | undefined>;
-  eventLogFile: string;
-}): string {
-  const env = Object.fromEntries(Object.entries(params.env).filter((entry): entry is [string, string] => entry[1] !== undefined));
-  return `const { spawn } = require("child_process");
-const { appendFileSync } = require("fs");
-const readline = require("readline");
-const command = ${JSON.stringify(params.command)};
-const args = ${JSON.stringify(params.args)};
-const env = { ...process.env, ...${JSON.stringify(env)} };
-const eventLogFile = ${JSON.stringify(params.eventLogFile)};
-function assistantText(message) {
-  if (!message || message.role !== "assistant" || !Array.isArray(message.content)) return [];
-  return message.content
-    .filter((part) => part && part.type === "text" && typeof part.text === "string" && part.text.trim())
-    .map((part) => part.text.trimEnd());
-}
-function renderLine(line) {
-  if (!line.trim()) return [];
-  try {
-    const event = JSON.parse(line);
-    if (event.type === "message_end" || event.type === "turn_end") return assistantText(event.message);
-    if (event.type === "agent_end") return ["✓ worker completed"];
-    return [];
-  } catch {
-    return [line];
-  }
-}
-const child = spawn(command, args, { env, stdio: ["ignore", "pipe", "pipe"] });
-const rl = readline.createInterface({ input: child.stdout });
-rl.on("line", (line) => {
-  appendFileSync(eventLogFile, line + "\\n");
-  for (const rendered of renderLine(line)) console.log(rendered);
-});
-child.stderr.on("data", (chunk) => process.stderr.write(chunk));
-child.on("error", (error) => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
-child.on("close", (code, signal) => {
-  if (signal) console.error("worker exited from signal " + signal);
-  process.exit(code ?? (signal ? 1 : process.exitCode || 0));
-});
-`;
-}
 
-function defaultTmuxEventLogFile(logFile: string): string {
-  const extension = extname(logFile);
-  if (extension) return `${logFile.slice(0, -extension.length)}.events.jsonl`;
-  return `${logFile}.events.jsonl`;
-}
-
-function buildPaneRendererProgram(eventLogFile: string): string {
-  return [
-    "const fs = require('fs');",
-    "const readline = require('readline');",
-    `const eventLogFile = ${JSON.stringify(eventLogFile)};`,
-    "function clamp(line) { return line.length <= 8000 ? line : line.slice(0, 8000) + '… [truncated ' + (line.length - 8000) + ' chars]'; }",
-    "function textParts(message) {",
-    "  if (!message || message.role !== 'assistant' || !Array.isArray(message.content)) return [];",
-    "  return message.content.filter((part) => part && part.type === 'text' && typeof part.text === 'string' && part.text.length > 0).map((part) => part.text);",
-    "}",
-    "function render(line) {",
-    "  if (!line.trim()) return [];",
-    "  let event;",
-    "  try { event = JSON.parse(line); } catch { return [line]; }",
-    "  if (!event || typeof event !== 'object') return [];",
-    "  if (event.type === 'message_end' || event.type === 'turn_end') return textParts(event.message).flatMap((text) => text.split(/\\r?\\n/).map(clamp));",
-    "  if (event.type === 'agent_end') return ['✓ worker completed'];",
-    "  if (event.type === 'tool_start' && typeof event.name === 'string') return ['→ ' + event.name];",
-    "  if (event.type === 'tool_end' && typeof event.name === 'string') return ['✓ ' + event.name];",
-    "  return [];",
-    "}",
-    "const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });",
-    "rl.on('line', (line) => {",
-    "  fs.appendFileSync(eventLogFile, line + '\\n');",
-    "  for (const rendered of render(line)) process.stdout.write(rendered + '\\n');",
-    "});",
-    "rl.on('close', () => process.exit(0));",
-  ].join("\n");
+export function buildTmuxLaunchEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
+  const allowed = new Set([
+    "PI_TEAM_WORKER",
+    "PI_SUBAGENT_ARTIFACT_DIR",
+    "PI_SUBAGENT_OUTPUT_FILE",
+    "PI_SUBAGENT_PROGRESS_FILE",
+    SUBAGENT_DEPTH_ENV,
+    SUBAGENT_MAX_DEPTH_ENV,
+    SUBAGENT_STACK_ENV,
+    SUBAGENT_PREVENT_CYCLES_ENV,
+    SUBAGENT_RUN_ID_ENV,
+    SUBAGENT_PARENT_RUN_ID_ENV,
+    SUBAGENT_ROOT_RUN_ID_ENV,
+    SUBAGENT_OWNER_ENV,
+    SUBAGENT_PROCESS_LOG_ENV,
+    SUBAGENT_FORK_SESSION_ENV,
+    SUBAGENT_CONTEXT_MODE_ENV,
+  ]);
+  return Object.fromEntries(Object.entries(env).filter(([key]) => allowed.has(key)));
 }
 
 export function buildTmuxLaunchScript(params: {
@@ -387,28 +324,12 @@ export function buildTmuxLaunchScript(params: {
   args: string[];
   cwd: string;
   env: Record<string, string | undefined>;
-  eventLogFile?: string;
 }): string {
   const envArgs = Object.entries(params.env)
     .filter((entry): entry is [string, string] => entry[1] !== undefined)
     .map(([key, value]) => `${key}=${shellQuote(value)}`);
   const command = [shellQuote(params.command), ...params.args.map(shellQuote)].join(" ");
   const invocation = ["env", ...envArgs, command].join(" ");
-  if (params.eventLogFile) {
-    return [
-      "#!/usr/bin/env bash",
-      `cd ${shellQuote(params.cwd)} || exit 1`,
-      `exec ${shellQuote(process.execPath)} <<'PI_TMUX_RENDERER'`,
-      buildReadableTmuxNodeScript({
-        command: params.command,
-        args: params.args,
-        env: params.env,
-        eventLogFile: params.eventLogFile,
-      }),
-      "PI_TMUX_RENDERER",
-      "",
-    ].join("\n");
-  }
   return [
     "#!/usr/bin/env bash",
     `cd ${shellQuote(params.cwd)} || exit 1`,
@@ -458,6 +379,41 @@ async function readTmuxUsefulLogTail(logFile: string, limit = 4000): Promise<str
     return useful.length > limit ? useful.slice(useful.length - limit) : useful;
   } catch {
     return "";
+  }
+}
+
+async function hydrateResultFromArtifactOutput(
+  result: SingleResult,
+  artifactContext: ArtifactContext,
+  opts: { required: boolean; maxOutput?: number },
+): Promise<boolean> {
+  if (!artifactContext.outputFile) return false;
+  if (opts.required && getFinalOutput(result.messages).trim()) return true;
+  try {
+    const output = await readFilePrefix(artifactContext.outputFile, opts.maxOutput || 24000);
+    const outputText = output.truncated
+      ? `${output.text}\n\n[truncated artifact output: ${output.originalBytes} -> ${opts.maxOutput || 24000} bytes]`
+      : output.text;
+    if (outputText.trim()) {
+      result.messages.push({ role: "assistant", content: [{ type: "text", text: outputText }] });
+      return true;
+    }
+    result.artifacts = { ...result.artifacts, artifactError: "Output file was empty." };
+    if (opts.required) {
+      result.exitCode = result.exitCode === 0 ? 1 : result.exitCode;
+      result.stopReason = "error";
+      result.errorMessage = "Required tmux worker output artifact was empty.";
+    }
+    return false;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    result.artifacts = { ...result.artifacts, artifactError: `Output file was not readable: ${message}` };
+    if (opts.required) {
+      result.exitCode = result.exitCode === 0 ? 1 : result.exitCode;
+      result.stopReason = "error";
+      result.errorMessage = `Required tmux worker output artifact was not readable: ${message}`;
+    }
+    return false;
   }
 }
 
@@ -543,11 +499,12 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
   const resolvedOwnership = resolveRunOwnership(ownership, agentName);
 
   try {
-    const effectiveOutput = output ?? agent.output;
+    const tmuxRequiresOutputArtifact = executionMode === "tmux" && !!tmuxPane?.eventLogFile;
+    const effectiveOutput = output ?? agent.output ?? (tmuxRequiresOutputArtifact ? "final.md" : undefined);
     const effectiveReads = reads ?? agent.defaultReads;
     const effectiveProgress = progress ?? agent.defaultProgress;
     const effectiveWorktree = worktree ?? agent.worktree;
-    const needsArtifacts = !!effectiveOutput || !!effectiveProgress || !!effectiveReads?.length || !!effectiveWorktree;
+    const needsArtifacts = tmuxRequiresOutputArtifact || !!effectiveOutput || !!effectiveProgress || !!effectiveReads?.length || !!effectiveWorktree;
 
     if (needsArtifacts) {
       artifactContext = await createArtifactContext({
@@ -594,7 +551,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         instructions.push("Read and use the declared files included below before completing the task.");
         effectiveTask += await readDeclaredFiles(artifactContext.readFiles, cwd);
       }
-      if (artifactContext.outputFile) instructions.push(`Write your final answer to this file before finishing: ${artifactContext.outputFile}`);
+      if (artifactContext.outputFile) {
+        instructions.push(`Write your final answer to this file before finishing: ${artifactContext.outputFile}`);
+        if (tmuxRequiresOutputArtifact) instructions.push("This run is displayed in a tmux CLI pane; orchestration reads your final result from that file, so do not finish until the file contains your final report.");
+      }
       if (artifactContext.progressFile) instructions.push(`Keep progress notes in this file as you work: ${artifactContext.progressFile}`);
       if (instructions.length > 0) {
         effectiveTask = `${effectiveTask}\n\nSubagent file IO instructions:\n- ${instructions.join("\n- ")}`;
@@ -606,7 +566,14 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
     }
 
     const contextMode = requestedContextMode ?? agent.context ?? "fresh";
-    const piArgs = buildPiArgs(agent, tmpPromptPath || null, effectiveTask, contextMode);
+    const piArgs = buildPiArgs(
+      agent,
+      tmpPromptPath || null,
+      effectiveTask,
+      contextMode,
+      executionMode === "tmux" ? "text" : "json",
+      !tmuxRequiresOutputArtifact,
+    );
     const allArgs = [...invocation.args, ...piArgs];
 
     const nextDepth = depthConfig.currentDepth + 1;
@@ -685,8 +652,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
           command: resolvedSandbox.command,
           args: resolvedSandbox.args,
           cwd: runCwd,
-          env: resolvedSandbox.env,
-          ...(tmuxEventLogFile ? { eventLogFile: tmuxEventLogFile } : {}),
+          env: buildTmuxLaunchEnv(resolvedSandbox.env),
         }),
         { encoding: "utf-8", mode: 0o700 },
       );
@@ -749,6 +715,17 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
           resolve(code);
         };
 
+        const finishFromOutputArtifact = async () => {
+          if (!tmuxRequiresOutputArtifact || !artifactContext?.outputFile || settled) return false;
+          const hydrated = await hydrateResultFromArtifactOutput(result, artifactContext, { required: false, maxOutput: result.maxOutput });
+          if (!hydrated || settled) return false;
+          semanticTerminationRequested = true;
+          closeSignal = "SIGTERM";
+          sendPaneSignal("output_artifact_written");
+          finish(0);
+          return true;
+        };
+
         const sendPaneSignal = (reason: string) => {
           if (!terminationStarted) {
             terminationStarted = true;
@@ -789,6 +766,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
 
         const poll = async () => {
           if (settled) return;
+          if (await finishFromOutputArtifact()) return;
           try {
             const handle = await open(tmuxPollLogFile, "r");
             try {
@@ -1068,18 +1046,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
     }
 
     if (artifactContext?.outputFile) {
-      try {
-        const output = await readFilePrefix(artifactContext.outputFile, result.maxOutput || 24000);
-        const outputText = output.truncated
-          ? `${output.text}\n\n[truncated artifact output: ${output.originalBytes} -> ${result.maxOutput || 24000} bytes]`
-          : output.text;
-        if (outputText.trim()) {
-          result.messages.push({ role: "assistant", content: [{ type: "text", text: outputText }] });
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        result.artifacts = { ...result.artifacts, artifactError: `Output file was not readable: ${message}` };
-      }
+      await hydrateResultFromArtifactOutput(result, artifactContext, {
+        required: tmuxRequiresOutputArtifact,
+        maxOutput: result.maxOutput,
+      });
     }
 
     if (worktreeContext && artifactContext) {

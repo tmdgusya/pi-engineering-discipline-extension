@@ -20,7 +20,7 @@ import { isDisciplineAgent, augmentAgentWithKarpathy, getSlopCleanerTask } from 
 import { fetchUrlToMarkdown } from "./webfetch/utils.js";
 import { PI_TEAM_WORKER_ENV, formatTeamRunSummary, runTeam, type TeamRunSummary } from "./team.js";
 import { defaultTeamRunStateRoot, listTeamRuns, readTeamRunRecord, writeTeamRunRecord } from "./team-state.js";
-import { buildTeamCommandPrompt, getTeamArgumentCompletions, parseTeamArgs } from "./team-command.js";
+import { buildTeamCommandPrompt, getTeamArgumentCompletions, isTeamFollowUpCommand, parseTeamArgs } from "./team-command.js";
 import { renderWebfetchCall, renderWebfetchResult } from "./webfetch/render.js";
 import { getDefaultApprovalStore } from "./sandbox/approval-store.js";
 import { parseSandboxApprovalMode } from "./sandbox/approval-mode.js";
@@ -228,7 +228,7 @@ export default function (pi: ExtensionAPI) {
   const makeDetails = (mode: "single" | "parallel") => (results: SingleResult[]): SubagentDetails => ({ mode, results });
 
   const TeamParams = Type.Object({
-    goal: Type.String({ description: "Goal for the lightweight native team run" }),
+    goal: Type.Optional(Type.String({ description: "Goal for the lightweight native team run. Omit only in follow-up command mode." })),
     workerCount: Type.Optional(Type.Number({ description: `Number of workers to dispatch (max ${MAX_PARALLEL_TASKS})` })),
     agent: Type.Optional(Type.String({ description: "Worker agent name. Default: worker" })),
     agentScope: Type.Optional(Type.Unsafe<"user" | "project" | "both">({
@@ -256,6 +256,8 @@ export default function (pi: ExtensionAPI) {
       description: "How to handle stale in-progress tasks when resuming.",
     })),
     staleTaskMs: Type.Optional(Type.Number({ description: "Age in milliseconds before in-progress resume tasks are stale" })),
+    commandTarget: Type.Optional(Type.String({ description: "Follow-up mode target worker owner or task id for an existing resumed run" })),
+    commandMessage: Type.Optional(Type.String({ description: "Follow-up mode command message to enqueue for the target" })),
   });
 
   if (isRootSession && !isTeamWorker) {
@@ -274,7 +276,7 @@ export default function (pi: ExtensionAPI) {
       renderCall: (args, theme) => renderCall(args, theme),
       renderResult: (result, { expanded }, theme) => renderResult(result, expanded, theme),
       execute: async (_toolCallId, params, signal, onUpdate, ctx) => {
-        const { goal, workerCount, agent, agentScope, worktree, worktreePolicy, backend, maxOutput, runId, resumeRunId, resumeMode, staleTaskMs } = params;
+        const { goal, workerCount, agent, agentScope, worktree, worktreePolicy, backend, maxOutput, runId, resumeRunId, resumeMode, staleTaskMs, commandTarget, commandMessage } = params;
         const defaultCwd = ctx.cwd;
         const teamRunStateRoot = defaultTeamRunStateRoot(defaultCwd);
         const hasUI = (ctx as any).hasUI !== false && !!ctx?.ui?.select;
@@ -309,7 +311,7 @@ export default function (pi: ExtensionAPI) {
         if (indicatorSupported) ctx.ui.setWorkingIndicator({ frames: [] });
         let summary: TeamRunSummary;
         try {
-          summary = await runTeam({ goal, workerCount, agent, worktree, worktreePolicy, backend, maxOutput, runId, resumeRunId, resumeMode, staleTaskMs }, {
+          summary = await runTeam({ goal, workerCount, agent, worktree, worktreePolicy, backend, maxOutput, runId, resumeRunId, resumeMode, staleTaskMs, commandTarget, commandMessage }, {
           findAgent,
           summarizeResult: getResultSummaryText,
           persistRun: async (record) => {
@@ -372,6 +374,7 @@ export default function (pi: ExtensionAPI) {
               windowName: input.task.terminal.windowName!,
               paneId: input.task.terminal.paneId!,
               logFile: input.task.terminal.logFile!,
+              eventLogFile: input.task.terminal.eventLogFile,
               attachCommand: input.task.terminal.attachCommand!,
               tmuxBinary: input.task.terminal.tmuxBinary,
               sessionAttempt: input.task.terminal.sessionAttempt,
@@ -1438,13 +1441,20 @@ export default function (pi: ExtensionAPI) {
     },
     handler: async (args, ctx) => {
       const parsed = parseTeamArgs(args ?? "");
-      if (!parsed.goal) {
-        ctx.ui.notify("/team requires a goal. Example: /team goal=\"build the API client\" agent=worker", "error");
+      const isFollowUp = isTeamFollowUpCommand(parsed);
+      if (!parsed.goal && !isFollowUp) {
+        ctx.ui.notify("/team requires a goal, or follow-up mode: /team resume=<runId> command=<worker|taskId> message=\"...\"", "error");
+        return;
+      }
+      if (parsed.goal && isFollowUp) {
+        ctx.ui.notify("/team goal mode and follow-up command mode are mutually exclusive; omit goal when using resume+command+message.", "error");
         return;
       }
       const ok = await ctx.ui.confirm(
-        "Start Team Run",
-        `Dispatch a bounded team toward the goal:\n\n${parsed.goal}\n\nProceed?`,
+        isFollowUp ? "Enqueue Team Command" : "Start Team Run",
+        isFollowUp
+          ? `Enqueue follow-up command for ${parsed.commandTarget} in ${parsed.resume}:\n\n${parsed.commandMessage}\n\nProceed?`
+          : `Dispatch a bounded team toward the goal:\n\n${parsed.goal}\n\nProceed?`,
       );
       if (!ok) return;
       ctx.ui.setStatus("harness", "Team run in progress...");

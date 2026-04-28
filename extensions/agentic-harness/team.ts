@@ -2,15 +2,23 @@ import type { AgentConfig } from "./agents.js";
 import { join } from "path";
 import { MAX_CONCURRENCY, MAX_PARALLEL_TASKS, mapWithConcurrencyLimit } from "./subagent.js";
 import { createWorkerPanes, detectTmux, killTmuxPane, killTmuxSession } from "./tmux.js";
-import { getResultSummaryText, isResultSuccess, type SingleResult } from "./types.js";
+import { emptyUsage, getResultSummaryText, isResultSuccess, type SingleResult } from "./types.js";
 import {
+  acknowledgeTeamCommand,
+  blockTeamCommand,
+  completeTeamCommand,
   createTeamRunRecord,
+  enqueueTeamCommand,
+  failTeamCommand,
   generateTeamRunId,
   markStaleRunningTasks,
+  normalizeTeamRunRecord,
   recordTeamEvent,
   recordTeamMessage,
   setTeamRunStatus,
+  startTeamCommand,
   type StaleTaskResumeMode,
+  type TeamCommand,
   type TeamRunRecord,
 } from "./team-state.js";
 
@@ -52,7 +60,7 @@ export interface TeamTask {
 }
 
 export interface TeamRunOptions {
-  goal: string;
+  goal?: string;
   workerCount?: number;
   agent?: string;
   worktree?: boolean;
@@ -64,6 +72,8 @@ export interface TeamRunOptions {
   staleTaskMs?: number;
   heartbeatMs?: number;
   backend?: TeamBackend;
+  commandTarget?: string;
+  commandMessage?: string;
 }
 
 export interface TeamVerificationEvidence {
@@ -173,11 +183,56 @@ export function validateTeamTasks(tasks: TeamTask[]): void {
   }
 }
 
+function isFollowUpCommand(opts: TeamRunOptions): boolean {
+  return !!(opts.resumeRunId && opts.commandTarget && opts.commandMessage);
+}
+
+function findCommandTarget(tasks: TeamTask[], target: string | undefined): TeamTask | undefined {
+  if (!target) return undefined;
+  return tasks.find((task) => task.id === target || task.owner === target);
+}
+
+function buildCommandWorkerPrompt(task: TeamTask, command: TeamCommand, goal: string): string {
+  return [
+    "# Team Worker Command",
+    "",
+    `Team goal: ${goal}`,
+    `Task id: ${task.id}`,
+    `Task owner: ${task.owner}`,
+    `Command id: ${command.id}`,
+    `Command attempt: ${command.attempt}`,
+    "",
+    "## Runtime rules",
+    `- ${WORKER_PROTOCOL}`,
+    "- Treat the durable team command record as the source of truth.",
+    "- Report completion, blocker, or failure clearly so the leader can update the command lifecycle.",
+    "",
+    "## Command",
+    command.body,
+    "",
+    "## Required final report",
+    "- Command outcome: completed, blocked, or failed.",
+    "- Changed files, or `none` if read-only.",
+    "- Verification commands/results, or explicit gaps if verification was impossible.",
+    "- Blockers/risks, or `none`.",
+  ].join("\n");
+}
+
+function commandRefs(result: SingleResult): string[] {
+  return [
+    result.artifacts?.artifactDir,
+    result.artifacts?.outputFile,
+    result.artifacts?.progressFile,
+    ...(result.artifacts?.readFiles ?? []),
+    result.worktree?.worktreePath,
+  ].filter((value): value is string => !!value);
+}
+
 export function buildTeamWorkerPrompt(task: TeamTask, opts: TeamRunOptions): string {
   return [
     "# Team Worker Assignment",
     "",
-    `Team goal: ${opts.goal}`,
+    `Team goal: ${opts.goal ?? task.subject}`,
     `Task id: ${task.id}`,
     `Task owner: ${task.owner}`,
     `Task subject: ${task.subject}`,
@@ -227,6 +282,7 @@ function createEvidence(tasks: TeamTask[], results: SingleResult[]): TeamVerific
     worktreeRefs,
     notes: [
       "MVP team mode uses dependency-free parallel-batch task records.",
+      "Team mode persists durable command lifecycle records; inbox/outbox messages are audit history.",
       "Worker self-reported verification appears in each task result summary.",
     ],
   };
@@ -293,8 +349,15 @@ export function formatTeamRunSummary(summary: TeamRunSummary): string {
   ].join("\n");
 }
 
+const persistChains = new WeakMap<TeamRuntime, Promise<void>>();
+
 async function persistIfEnabled(runtime: TeamRuntime, record: TeamRunRecord): Promise<void> {
-  await runtime.persistRun?.(record);
+  if (!runtime.persistRun) return;
+  const snapshot = JSON.parse(JSON.stringify(record)) as TeamRunRecord;
+  const previous = persistChains.get(runtime) ?? Promise.resolve();
+  const next = previous.then(() => runtime.persistRun?.(snapshot));
+  persistChains.set(runtime, next.catch(() => undefined));
+  await next;
 }
 
 function terminalTaskStatus(status: TeamTaskStatus): boolean {
@@ -308,8 +371,126 @@ export function resolveTeamWorktreePolicy(opts: Pick<TeamRunOptions, "worktree" 
   return !!opts.worktree;
 }
 
+
+async function runTeamFollowUpCommand(
+  record: TeamRunRecord,
+  opts: TeamRunOptions,
+  runtime: TeamRuntime,
+  backendRequested: TeamBackend,
+  backendUsed: ResolvedTeamBackend,
+  now: () => string,
+): Promise<TeamRunSummary> {
+  const target = findCommandTarget(record.tasks, opts.commandTarget);
+  const createdAt = now();
+  const results: SingleResult[] = [];
+  if (!target) {
+    const message = `Follow-up target not found: ${opts.commandTarget}`;
+    record = recordTeamEvent(record, { type: "run_failed", createdAt, message });
+    const summary = synthesizeTeamRun(record.goal, record.tasks, results, opts.maxOutput, backendRequested, backendUsed);
+    record = setTeamRunStatus(record, "failed", createdAt, { ...summary, success: false, ok: false, finalSynthesis: `${summary.finalSynthesis}\nFollow-up command failed: ${message}` });
+    await persistIfEnabled(runtime, record);
+    return record.summary!;
+  }
+
+  const body = opts.commandMessage || "";
+  record = enqueueTeamCommand(record, { taskId: target.id, owner: target.owner, body, createdAt });
+  const command = record.commands.at(-1)!;
+  record = recordTeamMessage(record, {
+    taskId: target.id,
+    from: "leader",
+    to: target.owner,
+    kind: "inbox",
+    body,
+    createdAt,
+    deliveredAt: createdAt,
+  });
+  await persistIfEnabled(runtime, record);
+
+  let result: SingleResult;
+  let wakeUpFailed = false;
+  try {
+    const prompt = buildCommandWorkerPrompt(target, { ...command, status: "started", attempt: command.attempt }, record.goal);
+    result = await runtime.runTask({
+      task: target,
+      prompt,
+      agent: runtime.findAgent?.(target.agent),
+      agentName: target.agent,
+      worktree: resolveTeamWorktreePolicy(opts),
+      maxOutput: opts.maxOutput,
+      extraEnv: {
+        [PI_TEAM_WORKER_ENV]: "1",
+        PI_SUBAGENT_MAX_DEPTH: "1",
+      },
+    }, 0);
+    const startedAt = now();
+    target.status = "in_progress";
+    target.updatedAt = startedAt;
+    target.heartbeatAt = startedAt;
+    record = acknowledgeTeamCommand(record, command.id, { now: startedAt });
+    record = startTeamCommand(record, command.id, { now: startedAt });
+    record = recordTeamEvent(record, { type: "task_started", taskId: target.id, commandId: command.id, createdAt: startedAt, message: "follow-up command started" });
+    await persistIfEnabled(runtime, record);
+    results.push(result);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    result = {
+      agent: target.agent,
+      agentSource: "unknown",
+      task: body,
+      exitCode: 1,
+      messages: [],
+      stderr: errorMessage,
+      usage: emptyUsage(),
+      stopReason: "error",
+      errorMessage,
+      terminal: target.terminal,
+    };
+    wakeUpFailed = true;
+    results.push(result);
+  }
+
+  const completedAt = now();
+  const summarize = runtime.summarizeResult ?? getResultSummaryText;
+  target.resultSummary = summarize(result, opts.maxOutput);
+  const refs = taskRefs(result);
+  target.artifactRefs = refs.artifactRefs;
+  target.worktreeRefs = refs.worktreeRefs;
+  target.updatedAt = completedAt;
+  target.completedAt = completedAt;
+
+  if (isResultSuccess(result)) {
+    target.status = "completed";
+    record = completeTeamCommand(record, command.id, { now: completedAt, resultSummary: target.resultSummary, artifactRefs: commandRefs(result) });
+    record = recordTeamEvent(record, { type: "task_completed", taskId: target.id, commandId: command.id, createdAt: completedAt, message: "follow-up command completed" });
+  } else {
+    const errorMessage = result.errorMessage || result.stderr || `exitCode ${result.exitCode}`;
+    target.status = wakeUpFailed ? "blocked" : "failed";
+    target.errorMessage = errorMessage;
+    record = wakeUpFailed
+      ? blockTeamCommand(record, command.id, { now: completedAt, errorMessage: `wake-up failed: ${errorMessage}` })
+      : failTeamCommand(record, command.id, { now: completedAt, errorMessage });
+    record = recordTeamEvent(record, { type: "task_failed", taskId: target.id, commandId: command.id, createdAt: completedAt, message: errorMessage });
+  }
+  record = recordTeamMessage(record, {
+    taskId: target.id,
+    from: target.owner,
+    to: "leader",
+    kind: isResultSuccess(result) ? "outbox" : "error",
+    body: target.resultSummary,
+    createdAt: completedAt,
+  });
+  const summary = synthesizeTeamRun(record.goal, record.tasks, results, opts.maxOutput, backendRequested, backendUsed);
+  record = recordTeamEvent(record, { type: summary.success ? "run_completed" : "run_failed", createdAt: now(), message: "follow-up command finished" });
+  record = setTeamRunStatus(record, summary.success ? "completed" : "failed", now(), summary);
+  await persistIfEnabled(runtime, record);
+  return summary;
+}
+
 export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promise<TeamRunSummary> {
   const agentName = opts.agent || "worker";
+  const followUpMode = isFollowUpCommand(opts);
+  if (!followUpMode && !opts.goal) throw new Error("team goal is required unless follow-up command mode is used.");
+  if (followUpMode && opts.goal) throw new Error("team follow-up command mode must not include goal.");
   const backendRequested = opts.backend ?? "auto";
   const tmuxAvailability = backendRequested === "native" ? { available: false } : await detectTmux();
   const tmuxBinary = "binary" in tmuxAvailability ? tmuxAvailability.binary : undefined;
@@ -327,18 +508,22 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
   const initialNow = now();
   const isResume = !!opts.resumeRunId;
   let record = isResume && runtime.loadRun
-    ? await runtime.loadRun(opts.resumeRunId as string)
+    ? normalizeTeamRunRecord(await runtime.loadRun(opts.resumeRunId as string))
     : createTeamRunRecord({
       runId: opts.runId || generateTeamRunId(),
-      goal: opts.goal,
+      goal: opts.goal!,
       options: opts,
-      tasks: createDefaultTeamTasks(opts.goal, opts.workerCount, agentName),
+      tasks: createDefaultTeamTasks(opts.goal!, opts.workerCount, agentName),
       now: initialNow,
     });
 
   if (isResume) {
     record = recordTeamEvent(record, { type: "run_resumed", createdAt: initialNow, message: `Resumed as ${opts.resumeRunId}` });
     record = markStaleRunningTasks(record, { now: initialNow, staleTaskMs: opts.staleTaskMs, mode: opts.resumeMode });
+  }
+
+  if (followUpMode) {
+    return runTeamFollowUpCommand(record, opts, runtime, backendRequested, backendUsed, now);
   }
 
   const tasks = record.tasks;
@@ -429,12 +614,24 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
     task.updatedAt = startedAt;
     task.heartbeatAt = startedAt;
     record = recordTeamEvent(record, { type: "task_started", taskId: task.id, createdAt: startedAt });
+    const assignmentPrompt = buildTeamWorkerPrompt(task, opts);
+    record = enqueueTeamCommand(record, {
+      taskId: task.id,
+      owner: task.owner,
+      body: assignmentPrompt,
+      createdAt: startedAt,
+    });
+    const command = record.commands.at(-1);
+    if (command) {
+      record = acknowledgeTeamCommand(record, command.id, { now: startedAt });
+      record = startTeamCommand(record, command.id, { now: startedAt });
+    }
     record = recordTeamMessage(record, {
       taskId: task.id,
       from: "leader",
       to: task.owner,
       kind: "inbox",
-      body: buildTeamWorkerPrompt(task, opts),
+      body: assignmentPrompt,
       createdAt: startedAt,
       deliveredAt: startedAt,
     });
@@ -456,7 +653,7 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
     try {
       result = await runtime.runTask({
         task,
-        prompt: buildTeamWorkerPrompt(task, opts),
+        prompt: assignmentPrompt,
         agent: runtime.findAgent?.(task.agent),
         agentName: task.agent,
         worktree: runWithWorktree,
@@ -476,6 +673,11 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
     task.artifactRefs = refs.artifactRefs;
     task.worktreeRefs = refs.worktreeRefs;
     const completedAt = now();
+    if (command) {
+      record = isResultSuccess(result)
+        ? completeTeamCommand(record, command.id, { now: completedAt, resultSummary: task.resultSummary, artifactRefs: commandRefs(result) })
+        : failTeamCommand(record, command.id, { now: completedAt, errorMessage: result.errorMessage || result.stderr || `exitCode ${result.exitCode}` });
+    }
     task.updatedAt = completedAt;
     task.completedAt = completedAt;
     record = recordTeamMessage(record, {

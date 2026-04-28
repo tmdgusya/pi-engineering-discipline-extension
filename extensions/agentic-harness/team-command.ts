@@ -7,6 +7,8 @@ export interface ParsedTeamCommand {
   resume?: string;
   resumeMode?: "mark-interrupted" | "retry-stale";
   maxOutput?: number;
+  commandTarget?: string;
+  commandMessage?: string;
 }
 
 const BACKENDS = ["auto", "native", "tmux"] as const;
@@ -22,6 +24,8 @@ export const TEAM_COMMAND_KEYS = [
   "resume",
   "resume-mode",
   "max-output",
+  "command",
+  "message",
 ] as const;
 
 export const TEAM_BACKEND_VALUES = BACKENDS;
@@ -81,6 +85,16 @@ export function parseTeamArgs(input: string): ParsedTeamCommand {
         if (Number.isFinite(n) && n > 0) out.maxOutput = Math.floor(n);
         break;
       }
+      case "command":
+      case "command-target":
+      case "commandtarget":
+        if (raw) out.commandTarget = raw;
+        break;
+      case "message":
+      case "command-message":
+      case "commandmessage":
+        if (raw) out.commandMessage = raw;
+        break;
     }
   }
   return out;
@@ -125,8 +139,14 @@ function stripQuotes(s: string): string {
   return t;
 }
 
+export function isTeamFollowUpCommand(parsed: ParsedTeamCommand): boolean {
+  return !!(parsed.resume && parsed.commandTarget && parsed.commandMessage);
+}
+
 export function buildTeamCommandPrompt(parsed: ParsedTeamCommand): string {
-  const params: string[] = [`goal=${JSON.stringify(parsed.goal)}`];
+  const isFollowUp = isTeamFollowUpCommand(parsed);
+  const params: string[] = [];
+  if (!isFollowUp) params.push(`goal=${JSON.stringify(parsed.goal)}`);
   if (parsed.agent) params.push(`agent=${JSON.stringify(parsed.agent)}`);
   if (parsed.workerCount !== undefined) params.push(`workerCount=${parsed.workerCount}`);
   if (parsed.backend) params.push(`backend=${JSON.stringify(parsed.backend)}`);
@@ -134,6 +154,16 @@ export function buildTeamCommandPrompt(parsed: ParsedTeamCommand): string {
   if (parsed.resume) params.push(`resumeRunId=${JSON.stringify(parsed.resume)}`);
   if (parsed.resumeMode) params.push(`resumeMode=${JSON.stringify(parsed.resumeMode)}`);
   if (parsed.maxOutput !== undefined) params.push(`maxOutput=${parsed.maxOutput}`);
+  if (parsed.commandTarget) params.push(`commandTarget=${JSON.stringify(parsed.commandTarget)}`);
+  if (parsed.commandMessage) params.push(`commandMessage=${JSON.stringify(parsed.commandMessage)}`);
+  if (isFollowUp) {
+    return [
+      "The user wants to enqueue a durable follow-up command for an existing team run.",
+      "Invoke the `team` tool in follow-up command mode with these parameters verbatim:",
+      params.map((p) => `  ${p}`).join("\n"),
+      "Do not create a new team goal. The existing run is the source of truth; enqueue the command before any tmux wake-up attempt and report the durable command result.",
+    ].join("\n\n");
+  }
   return [
     "The user wants to dispatch a lightweight native team run.",
     "Invoke the `team` tool with these parameters verbatim:",
@@ -231,6 +261,10 @@ function keyDescription(key: string): string | undefined {
       return "How to handle stale in-progress tasks when resuming.";
     case "max-output":
       return "Cap retained worker output characters.";
+    case "command":
+      return "Follow-up target worker owner or task id for an existing resumed run.";
+    case "message":
+      return "Follow-up command message to enqueue for the target.";
     default:
       return undefined;
   }

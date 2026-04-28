@@ -129,3 +129,27 @@ describe("getTeamArgumentCompletions", () => {
     expect(out).toEqual([]);
   });
 });
+
+describe("team follow-up command parsing", () => {
+  it("parses follow-up target and message without requiring goal", () => {
+    const out = parseTeamArgs('resume=team-123 command=worker-1 message="check the failing test"');
+    expect(out.goal).toBe("");
+    expect(out.resume).toBe("team-123");
+    expect(out.commandTarget).toBe("worker-1");
+    expect(out.commandMessage).toBe("check the failing test");
+  });
+
+  it("serializes follow-up mode without a goal", () => {
+    const prompt = buildTeamCommandPrompt({
+      goal: "",
+      resume: "team-123",
+      commandTarget: "task-1",
+      commandMessage: "write status",
+    });
+    expect(prompt).toContain("follow-up command mode");
+    expect(prompt).toContain('resumeRunId="team-123"');
+    expect(prompt).toContain('commandTarget="task-1"');
+    expect(prompt).toContain('commandMessage="write status"');
+    expect(prompt).not.toContain("goal=");
+  });
+});

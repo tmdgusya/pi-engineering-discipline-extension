@@ -616,3 +616,177 @@ describe("resolveTeamWorktreePolicy", () => {
     expect(resolveTeamWorktreePolicy({ worktree: false, worktreePolicy: "auto" })).toBe(false);
   });
 });
+
+describe("runTeam durable commands", () => {
+  it("persists command lifecycle alongside audit inbox/outbox for initial dispatch", async () => {
+    const records: any[] = [];
+
+    const summary = await runTeam(
+      { goal: "Command-backed dispatch", workerCount: 1, agent: "worker", runId: "team-command-backed", heartbeatMs: 0 },
+      {
+        now: (() => {
+          let tick = 0;
+          return () => `2026-04-28T00:00:0${tick++}.000Z`;
+        })(),
+        persistRun: (record) => { records.push(JSON.parse(JSON.stringify(record))); },
+        runTask: async ({ task, prompt }) => fakeResult(task.agent, prompt, "command backed done", {
+          artifacts: { outputFile: ".pi/team/final.md" },
+        }),
+      },
+    );
+
+    const finalRecord = records.at(-1);
+    expect(summary.success).toBe(true);
+    expect(finalRecord.commands).toHaveLength(1);
+    expect(finalRecord.commands[0]).toMatchObject({
+      id: "team-command-backed-command-1",
+      taskId: "task-1",
+      owner: "worker-1",
+      status: "completed",
+      attempt: 1,
+      resultSummary: expect.stringContaining("command backed done"),
+      artifactRefs: [".pi/team/final.md"],
+    });
+    expect(finalRecord.events.map((event: any) => event.type)).toEqual(expect.arrayContaining([
+      "command_enqueued",
+      "command_acknowledged",
+      "command_started",
+      "command_completed",
+      "message_recorded",
+    ]));
+    expect(finalRecord.messages.map((message: any) => message.kind)).toEqual(["inbox", "outbox"]);
+  });
+
+  it("routes follow-up mode to an existing run without creating default tasks", async () => {
+    const [task] = createDefaultTeamTasks("Existing run", 1, "worker");
+    task.status = "completed";
+    task.terminal = { backend: "native" };
+    const loadedRecord: any = {
+      schemaVersion: 1,
+      runId: "team-follow-up",
+      goal: "Existing run",
+      createdAt: "2026-04-28T00:00:00.000Z",
+      updatedAt: "2026-04-28T00:00:00.000Z",
+      status: "completed",
+      options: { goal: "Existing run" },
+      tasks: [task],
+      commands: [],
+      events: [],
+      messages: [],
+    };
+    const records: any[] = [];
+    const calls: any[] = [];
+
+    const summary = await runTeam(
+      { resumeRunId: "team-follow-up", commandTarget: "worker-1", commandMessage: "please verify follow-up", heartbeatMs: 0 },
+      {
+        now: (() => {
+          let tick = 0;
+          return () => `2026-04-28T00:01:0${tick++}.000Z`;
+        })(),
+        loadRun: async () => loadedRecord,
+        persistRun: (record) => { records.push(JSON.parse(JSON.stringify(record))); },
+        runTask: async ({ task, prompt }) => {
+          calls.push({ taskId: task.id, prompt });
+          return fakeResult(task.agent, prompt, "follow-up done");
+        },
+      },
+    );
+
+    const finalRecord = records.at(-1);
+    expect(summary.success).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].taskId).toBe("task-1");
+    expect(calls[0].prompt).toContain("Command id: team-follow-up-command-1");
+    expect(calls[0].prompt).toContain("please verify follow-up");
+    expect(finalRecord.tasks).toHaveLength(1);
+    expect(finalRecord.commands[0]).toMatchObject({
+      id: "team-follow-up-command-1",
+      body: "please verify follow-up",
+      status: "completed",
+    });
+  });
+
+  it("rejects follow-up mode with missing target before command creation", async () => {
+    const loadedRecord: any = {
+      schemaVersion: 1,
+      runId: "team-follow-up-missing",
+      goal: "Existing run",
+      createdAt: "2026-04-28T00:00:00.000Z",
+      updatedAt: "2026-04-28T00:00:00.000Z",
+      status: "completed",
+      options: { goal: "Existing run" },
+      tasks: createDefaultTeamTasks("Existing run", 1, "worker"),
+      commands: [],
+      events: [],
+      messages: [],
+    };
+    const records: any[] = [];
+
+    const summary = await runTeam(
+      { resumeRunId: "team-follow-up-missing", commandTarget: "worker-9", commandMessage: "lost" },
+      {
+        now: () => "2026-04-28T00:01:00.000Z",
+        loadRun: async () => loadedRecord,
+        persistRun: (record) => { records.push(JSON.parse(JSON.stringify(record))); },
+        runTask: async () => {
+          throw new Error("must not run missing target");
+        },
+      },
+    );
+
+    const finalRecord = records.at(-1);
+    expect(summary.success).toBe(false);
+    expect(summary.finalSynthesis).toContain("Follow-up command failed");
+    expect(finalRecord.commands).toEqual([]);
+    expect(finalRecord.events.at(-1).message).toContain("worker-9");
+  });
+});
+
+describe("runTeam follow-up failure safety", () => {
+  it("preserves a durable command and marks it blocked when follow-up wake-up fails", async () => {
+    const [task] = createDefaultTeamTasks("Existing run", 1, "worker");
+    task.status = "completed";
+    task.terminal = { backend: "tmux", paneId: "%1", sessionName: "s", windowName: "w", logFile: "/tmp/task.log", attachCommand: "tmux attach -t s" };
+    const loadedRecord: any = {
+      schemaVersion: 1,
+      runId: "team-follow-up-wakeup-fail",
+      goal: "Existing run",
+      createdAt: "2026-04-28T00:00:00.000Z",
+      updatedAt: "2026-04-28T00:00:00.000Z",
+      status: "completed",
+      options: { goal: "Existing run" },
+      tasks: [task],
+      commands: [],
+      events: [],
+      messages: [],
+    };
+    const records: any[] = [];
+
+    const summary = await runTeam(
+      { resumeRunId: "team-follow-up-wakeup-fail", commandTarget: "worker-1", commandMessage: "try wake", backend: "tmux" },
+      {
+        now: (() => {
+          let tick = 0;
+          return () => `2026-04-28T00:01:0${tick++}.000Z`;
+        })(),
+        loadRun: async () => loadedRecord,
+        persistRun: (record) => { records.push(JSON.parse(JSON.stringify(record))); },
+        runTask: async () => {
+          throw new Error("send-keys failed");
+        },
+      },
+    );
+
+    const finalRecord = records.at(-1);
+    expect(summary.success).toBe(false);
+    expect(finalRecord.commands).toHaveLength(1);
+    expect(finalRecord.commands[0]).toMatchObject({
+      body: "try wake",
+      status: "blocked",
+      attempt: 1,
+      errorMessage: expect.stringContaining("wake-up failed"),
+    });
+    expect(finalRecord.tasks[0]).toMatchObject({ status: "blocked", errorMessage: expect.stringContaining("send-keys failed") });
+  });
+});

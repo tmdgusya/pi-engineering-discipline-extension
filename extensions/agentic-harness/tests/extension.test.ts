@@ -169,7 +169,9 @@ describe("Extension Registration", () => {
     expect(schema.properties.resumeRunId).toBeDefined();
     expect(schema.properties.resumeMode).toBeDefined();
     expect(schema.properties.staleTaskMs).toBeDefined();
-    expect(schema.required).toContain("goal");
+    expect(schema.properties.commandTarget).toBeDefined();
+    expect(schema.properties.commandMessage).toBeDefined();
+    expect(schema.required ?? []).not.toContain("goal");
   });
 
   it("should register team tool in root session", () => {

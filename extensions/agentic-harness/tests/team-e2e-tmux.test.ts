@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import type { AgentConfig } from "../agents.js";
 import { resolveDepthConfig, runAgent } from "../subagent.js";
+import type { TeamRunRecord } from "../team-state.js";
 import { runTeam } from "../team.js";
 
 describe.runIf(process.platform !== "win32")("team mode tmux e2e", () => {
@@ -12,12 +13,23 @@ describe.runIf(process.platform !== "win32")("team mode tmux e2e", () => {
     const runnerScript = join(tempDir, "runner.mjs");
     const fakeTmux = join(tempDir, "tmux");
     const callsFile = join(tempDir, "tmux-calls.log");
+    const argvFile = join(tempDir, "runner-argv.log");
     const tmuxStateFile = join(tempDir, "tmux-state.json");
 
     writeFileSync(runnerScript, [
-      "const message = { role: 'assistant', content: [{ type: 'text', text: 'team worker done' }] };",
-      "console.log(JSON.stringify({ type: 'message_end', message }));",
-      "console.log(JSON.stringify({ type: 'agent_end', messages: [message] }));",
+      "import { appendFileSync, mkdirSync, writeFileSync } from 'fs';",
+      "import { dirname } from 'path';",
+      `const argvFile = ${JSON.stringify(argvFile)};`,
+      "appendFileSync(argvFile, process.argv.slice(2).join(' ') + '\\n---RUN---\\n');",
+      "if (process.argv.includes('--mode') || process.argv.includes('json') || process.argv.includes('-p')) {",
+      "  console.error('unexpected non-cli worker args: ' + process.argv.slice(2).join(' '));",
+      "  process.exit(9);",
+      "}",
+      "console.log('normal pi cli pane output');",
+      "if (process.env.PI_SUBAGENT_OUTPUT_FILE) {",
+      "  mkdirSync(dirname(process.env.PI_SUBAGENT_OUTPUT_FILE), { recursive: true });",
+      "  writeFileSync(process.env.PI_SUBAGENT_OUTPUT_FILE, 'team worker done from artifact', 'utf8');",
+      "}",
     ].join("\n"));
 
     writeFileSync(fakeTmux, [
@@ -86,6 +98,48 @@ describe.runIf(process.platform !== "win32")("team mode tmux e2e", () => {
     delete process.env.TMUX;
     delete process.env.TMUX_PANE;
     process.argv = [process.execPath, runnerScript];
+    const records: TeamRunRecord[] = [];
+    const latestRecord = (runId: string): TeamRunRecord | undefined => {
+      for (let index = records.length - 1; index >= 0; index -= 1) {
+        if (records[index].runId === runId) return records[index];
+      }
+      return undefined;
+    };
+    const runtime = {
+      findAgent: () => fixtureAgent,
+      persistRun: (record: TeamRunRecord) => { records.push(JSON.parse(JSON.stringify(record))); },
+      loadRun: async (runId: string) => {
+        const record = latestRecord(runId);
+        if (!record) throw new Error(`missing persisted run: ${runId}`);
+        return JSON.parse(JSON.stringify(record));
+      },
+      runTask: (input: any) => runAgent({
+        agent: input.agent,
+        agentName: input.agentName,
+        task: input.prompt,
+        cwd: tempDir,
+        depthConfig: resolveDepthConfig(),
+        ownership: { runId: `team-e2e-worker-${records.length}`, owner: "test-suite" },
+        executionMode: input.task.terminal?.backend === "tmux" ? "tmux" : "native",
+        tmuxPane: input.task.terminal?.backend === "tmux"
+          ? {
+            sessionName: input.task.terminal.sessionName!,
+            windowName: input.task.terminal.windowName!,
+            paneId: input.task.terminal.paneId!,
+            logFile: input.task.terminal.logFile!,
+            eventLogFile: input.task.terminal.eventLogFile,
+            attachCommand: input.task.terminal.attachCommand!,
+            tmuxBinary: input.task.terminal.tmuxBinary,
+            sessionAttempt: input.task.terminal.sessionAttempt,
+          }
+          : undefined,
+        extraEnv: {
+          ...input.extraEnv,
+          PI_DEBUG_SECRET: "super-secret-token-value",
+        },
+        makeDetails: (results) => ({ mode: "single", results }),
+      }),
+    };
 
     try {
       const summary = await runTeam(
@@ -96,34 +150,7 @@ describe.runIf(process.platform !== "win32")("team mode tmux e2e", () => {
           backend: "tmux",
           runId: "team-e2e-tmux",
         },
-        {
-          findAgent: () => fixtureAgent,
-          runTask: (input) => runAgent({
-            agent: input.agent,
-            agentName: input.agentName,
-            task: input.prompt,
-            cwd: tempDir,
-            depthConfig: resolveDepthConfig(),
-            ownership: { runId: "team-e2e-worker", owner: "test-suite" },
-            executionMode: input.task.terminal?.backend === "tmux" ? "tmux" : "native",
-            tmuxPane: input.task.terminal?.backend === "tmux"
-              ? {
-                sessionName: input.task.terminal.sessionName!,
-                windowName: input.task.terminal.windowName!,
-                paneId: input.task.terminal.paneId!,
-                logFile: input.task.terminal.logFile!,
-                attachCommand: input.task.terminal.attachCommand!,
-                tmuxBinary: input.task.terminal.tmuxBinary,
-                sessionAttempt: input.task.terminal.sessionAttempt,
-              }
-              : undefined,
-            extraEnv: {
-              ...input.extraEnv,
-              PI_DEBUG_SECRET: "super-secret-token-value",
-            },
-            makeDetails: (results) => ({ mode: "single", results }),
-          }),
-        },
+        runtime,
       );
 
       expect(summary.success).toBe(true);
@@ -132,9 +159,47 @@ describe.runIf(process.platform !== "win32")("team mode tmux e2e", () => {
       expect(summary.tasks[0].status).toBe("completed");
       expect(summary.finalSynthesis).toContain("tmux attach -t");
 
+      expect(summary.tasks[0].resultSummary).toContain("team worker done from artifact");
+
+      const followUp = await runTeam(
+        {
+          resumeRunId: "team-e2e-tmux",
+          commandTarget: "worker-1",
+          commandMessage: "follow-up command through durable inbox",
+          backend: "tmux",
+        },
+        runtime,
+      );
+
+      expect(followUp.success).toBe(true);
+      expect(followUp.tasks).toHaveLength(1);
+      expect(followUp.tasks[0].status).toBe("completed");
+      expect(followUp.tasks[0].resultSummary).toContain("team worker done from artifact");
+
+      const finalRecord = latestRecord("team-e2e-tmux");
+      expect(finalRecord?.commands.at(-1)).toMatchObject({
+        owner: "worker-1",
+        body: "follow-up command through durable inbox",
+        status: "completed",
+      });
+      expect(finalRecord?.events.map((event: any) => event.type)).toEqual(expect.arrayContaining([
+        "command_enqueued",
+        "command_acknowledged",
+        "command_started",
+        "command_completed",
+      ]));
+
       const calls = readFileSync(callsFile, "utf8");
+      const runnerArgv = readFileSync(argvFile, "utf8");
       expect(calls).toContain("send-keys -t");
+      expect((calls.match(/send-keys -t/g) || []).length).toBeGreaterThanOrEqual(2);
+      expect(calls).not.toContain("--mode json");
+      expect(calls).not.toContain(" -p ");
+      expect(calls).not.toContain("PI_TMUX_RENDERER");
       expect(calls).not.toContain("super-secret-token-value");
+      expect(runnerArgv).toContain("follow-up command through durable inbox");
+      expect(runnerArgv).not.toContain("--mode json");
+      expect(runnerArgv).not.toContain(" -p ");
     } finally {
       process.env.PATH = originalPath;
       if (originalTmux === undefined) delete process.env.TMUX;

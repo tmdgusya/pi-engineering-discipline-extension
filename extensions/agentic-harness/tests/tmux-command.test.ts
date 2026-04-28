@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTmuxShellCommand } from "../subagent.js";
+import { buildPiArgs, buildTmuxLaunchEnv, buildTmuxLaunchScript, buildTmuxShellCommand } from "../subagent.js";
 
 // Regression guard: literal LF (0x0A) bytes inside a tmux send-keys payload
 // are interpreted by the pane pty as Enter. If buildTmuxShellCommand ever
@@ -71,5 +71,64 @@ describe("buildTmuxShellCommand", () => {
     expect(cmd).toContain("'/bin/echo'");
     expect(cmd).toContain("'hello'");
     expect(cmd).toContain("FOO='bar'");
+  });
+});
+
+describe("buildPiArgs output mode", () => {
+  it("keeps JSON mode for native subagents", () => {
+    const args = buildPiArgs(undefined, null, "do work", "fresh", "json");
+
+    expect(args).toContain("--mode");
+    expect(args).toContain("json");
+    expect(args).toContain("--no-session");
+    expect(args.at(-1)).toBe("Task: do work");
+  });
+
+  it("omits JSON mode for tmux pi CLI panes", () => {
+    const args = buildPiArgs(undefined, null, "do work", "fresh", "text", false);
+
+    expect(args).not.toContain("--mode");
+    expect(args).not.toContain("json");
+    expect(args).not.toContain("-p");
+    expect(args).toContain("--no-session");
+    expect(args.at(-1)).toBe("Task: do work");
+  });
+});
+
+describe("buildTmuxLaunchScript true CLI mode", () => {
+  it("launches the command directly without a JSON pane renderer", () => {
+    const script = buildTmuxLaunchScript({
+      command: "/usr/local/bin/pi",
+      args: ["-p", "Task: hello"],
+      cwd: "/tmp",
+      env: { PI_TEAM_WORKER: "1" },
+    });
+
+    expect(script).toContain("exec env");
+    expect(script).toContain("'/usr/local/bin/pi'");
+    expect(script).toContain("'-p'");
+    expect(script).not.toContain("PI_TMUX_RENDERER");
+    expect(script).not.toContain("--mode");
+    expect(script).not.toContain("events.jsonl");
+  });
+});
+
+
+describe("buildTmuxLaunchEnv", () => {
+  it("keeps worker control variables without persisting parent terminal or secret values", () => {
+    const env = buildTmuxLaunchEnv({
+      PI_TEAM_WORKER: "1",
+      PI_SUBAGENT_OUTPUT_FILE: "/tmp/final.md",
+      PI_SUBAGENT_RUN_ID: "run-1",
+      TMUX_PANE: "%parent",
+      OPENAI_API_KEY: "secret",
+      PI_DEBUG_SECRET: "super-secret-token-value",
+    });
+
+    expect(env).toEqual({
+      PI_TEAM_WORKER: "1",
+      PI_SUBAGENT_OUTPUT_FILE: "/tmp/final.md",
+      PI_SUBAGENT_RUN_ID: "run-1",
+    });
   });
 });
