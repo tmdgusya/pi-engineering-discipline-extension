@@ -284,15 +284,66 @@ export function buildTmuxShellCommand(params: {
   args: string[];
   cwd: string;
   env: Record<string, string | undefined>;
-  appendExitMarker?: boolean;
+  exitMarkerLogFile?: string;
 }): string {
   const envArgs = Object.entries(params.env)
     .filter((entry): entry is [string, string] => entry[1] !== undefined)
     .map(([key, value]) => `${key}=${shellQuote(value)}`);
   const command = [shellQuote(params.command), ...params.args.map(shellQuote)].join(" ");
   const invocation = ["env", ...envArgs, command].join(" ");
-  if (params.appendExitMarker === false) return `{ cd ${shellQuote(params.cwd)} && ${invocation}; } 2>&1`;
-  return `{ cd ${shellQuote(params.cwd)} && ${invocation}; code=$?; printf '\\n${TMUX_EXIT_MARKER}%s\\n' "$code"; } 2>&1`;
+  const markerTarget = params.exitMarkerLogFile
+    ? ` >> ${shellQuote(params.exitMarkerLogFile)}`
+    : "";
+  return `{ cd ${shellQuote(params.cwd)} && ${invocation}; code=$?; printf '\n${TMUX_EXIT_MARKER}%s\n' "$code"${markerTarget}; exit "$code"; } 2>&1`;
+}
+
+function buildReadableTmuxNodeScript(params: {
+  command: string;
+  args: string[];
+  env: Record<string, string | undefined>;
+  eventLogFile: string;
+}): string {
+  const env = Object.fromEntries(Object.entries(params.env).filter((entry): entry is [string, string] => entry[1] !== undefined));
+  return `const { spawn } = require("child_process");
+const { appendFileSync } = require("fs");
+const readline = require("readline");
+const command = ${JSON.stringify(params.command)};
+const args = ${JSON.stringify(params.args)};
+const env = { ...process.env, ...${JSON.stringify(env)} };
+const eventLogFile = ${JSON.stringify(params.eventLogFile)};
+function assistantText(message) {
+  if (!message || message.role !== "assistant" || !Array.isArray(message.content)) return [];
+  return message.content
+    .filter((part) => part && part.type === "text" && typeof part.text === "string" && part.text.trim())
+    .map((part) => part.text.trimEnd());
+}
+function renderLine(line) {
+  if (!line.trim()) return [];
+  try {
+    const event = JSON.parse(line);
+    if (event.type === "message_end" || event.type === "turn_end") return assistantText(event.message);
+    if (event.type === "agent_end") return ["✓ worker completed"];
+    return [];
+  } catch {
+    return [line];
+  }
+}
+const child = spawn(command, args, { env, stdio: ["ignore", "pipe", "pipe"] });
+const rl = readline.createInterface({ input: child.stdout });
+rl.on("line", (line) => {
+  appendFileSync(eventLogFile, line + "\n");
+  for (const rendered of renderLine(line)) console.log(rendered);
+});
+child.stderr.on("data", (chunk) => process.stderr.write(chunk));
+child.on("error", (error) => {
+  console.error(error.message);
+  process.exitCode = 1;
+});
+child.on("close", (code, signal) => {
+  if (signal) console.error("worker exited from signal " + signal);
+  process.exit(code ?? (signal ? 1 : process.exitCode || 0));
+});
+`;
 }
 
 function defaultTmuxEventLogFile(logFile: string): string {
@@ -344,15 +395,17 @@ export function buildTmuxLaunchScript(params: {
   const command = [shellQuote(params.command), ...params.args.map(shellQuote)].join(" ");
   const invocation = ["env", ...envArgs, command].join(" ");
   if (params.eventLogFile) {
-    const rendererProgram = buildPaneRendererProgram(params.eventLogFile);
     return [
       "#!/usr/bin/env bash",
-      "set -o pipefail",
       `cd ${shellQuote(params.cwd)} || exit 1`,
-      `${invocation} 2>&1 | node -e ${shellQuote(rendererProgram)}`,
-      "code=${PIPESTATUS[0]}",
-      `printf '\n${TMUX_EXIT_MARKER}%s\n' "$code" >> ${shellQuote(params.eventLogFile)}`,
-      "exit \"$code\"",
+      `exec ${shellQuote(process.execPath)} <<'PI_TMUX_RENDERER'`,
+      buildReadableTmuxNodeScript({
+        command: params.command,
+        args: params.args,
+        env: params.env,
+        eventLogFile: params.eventLogFile,
+      }),
+      "PI_TMUX_RENDERER",
       "",
     ].join("\n");
   }
@@ -613,14 +666,19 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         paneId: tmuxPane.paneId,
         attachCommand: tmuxPane.attachCommand,
         logFile: tmuxPane.logFile,
-        eventLogFile,
+        eventLogFile: tmuxPane.eventLogFile,
         tmuxBinary: tmuxPane.tmuxBinary,
         sessionAttempt: tmuxPane.sessionAttempt,
       };
+      const tmuxEventLogFile = tmuxPane.eventLogFile ?? join(
+        dirname(tmuxPane.logFile),
+        `${basename(tmuxPane.logFile).replace(/\.[^.]+$/, "") || "pane"}.events.jsonl`,
+      );
+      tmuxLifecycleMetadata.eventLogFile = tmuxEventLogFile;
       await mkdir(dirname(tmuxPane.logFile), { recursive: true });
+      await mkdir(dirname(tmuxEventLogFile), { recursive: true });
       await writeFile(tmuxPane.logFile, "", "utf-8");
-      await mkdir(dirname(eventLogFile), { recursive: true });
-      await writeFile(eventLogFile, "", "utf-8");
+      await writeFile(tmuxEventLogFile, "", "utf-8");
       const tmuxLaunchScript = join(
         dirname(tmuxPane.logFile),
         `.pi-tmux-launch-${resolvedOwnership.runId}-${randomBytes(8).toString("hex")}.sh`,
@@ -632,7 +690,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
           args: resolvedSandbox.args,
           cwd: runCwd,
           env: resolvedSandbox.env,
-          eventLogFile,
+          eventLogFile: tmuxEventLogFile,
         }),
         { encoding: "utf-8", mode: 0o700 },
       );
@@ -641,7 +699,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         args: [tmuxLaunchScript],
         cwd: runCwd,
         env: {},
-        appendExitMarker: false,
+        exitMarkerLogFile: tmuxEventLogFile,
       });
       const tmuxBinary = tmuxPane.tmuxBinary ?? "tmux";
       try {
@@ -726,7 +784,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         const poll = async () => {
           if (settled) return;
           try {
-            const handle = await open(eventLogFile, "r");
+            const handle = await open(tmuxEventLogFile, "r");
             try {
               const stats = await handle.stat();
               if (stats.size > readOffset) {
