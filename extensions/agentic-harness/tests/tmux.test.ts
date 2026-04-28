@@ -69,6 +69,7 @@ describe("tmux helpers", () => {
         paneId: "%1",
         attachCommand: "tmux attach -t pi-team-demo",
         logFile: "/tmp/John Doe/a;b/task-1.log",
+        eventLogFile: "/tmp/John Doe/a;b/task-1.events.jsonl",
         placement: "detached-session",
       },
       {
@@ -77,6 +78,7 @@ describe("tmux helpers", () => {
         paneId: "%2",
         attachCommand: "tmux attach -t pi-team-demo",
         logFile: "/tmp/John Doe/a;b/task-2.log",
+        eventLogFile: "/tmp/John Doe/a;b/task-2.events.jsonl",
         placement: "detached-session",
       },
     ]);
@@ -107,6 +109,7 @@ describe("tmux helpers", () => {
         paneId: "%11",
         attachCommand: "tmux attach -t dev-session",
         logFile: "/tmp/current-window/task-1.log",
+        eventLogFile: "/tmp/current-window/task-1.events.jsonl",
         placement: "current-window",
       },
       {
@@ -115,6 +118,7 @@ describe("tmux helpers", () => {
         paneId: "%12",
         attachCommand: "tmux attach -t dev-session",
         logFile: "/tmp/current-window/task-2.log",
+        eventLogFile: "/tmp/current-window/task-2.events.jsonl",
         placement: "current-window",
       },
     ]);
@@ -160,6 +164,7 @@ describe("tmux helpers", () => {
         paneId: "%1",
         attachCommand: "tmux attach -t pi-run-attempt-retry1",
         logFile: "/tmp/run/task-1.log",
+        eventLogFile: "/tmp/run/task-1.events.jsonl",
         sessionAttempt: "retry1",
         placement: "detached-session",
       },

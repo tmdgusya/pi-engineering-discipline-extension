@@ -137,6 +137,7 @@ describe("runTeam", () => {
         paneId: "%1",
         attachCommand: "tmux attach -t pi-team-run-1",
         logFile: "/tmp/team-run-1/task-1.log",
+        eventLogFile: "/tmp/team-run-1/task-1.events.jsonl",
       },
       {
         sessionName: "pi-team-run-1",
@@ -144,6 +145,7 @@ describe("runTeam", () => {
         paneId: "%2",
         attachCommand: "tmux attach -t pi-team-run-1",
         logFile: "/tmp/team-run-1/task-2.log",
+        eventLogFile: "/tmp/team-run-1/task-2.events.jsonl",
       },
     ]);
 
@@ -175,6 +177,7 @@ describe("runTeam", () => {
         paneId: "%1",
         attachCommand: "tmux attach -t pi-custom-binary",
         logFile: "/tmp/custom-binary/task-1.log",
+        eventLogFile: "/tmp/custom-binary/task-1.events.jsonl",
       },
     ]);
     const terminals: any[] = [];
@@ -253,6 +256,7 @@ describe("runTeam", () => {
         paneId: "%1",
         attachCommand: "tmux attach -t pi-team-observability",
         logFile: "/tmp/team-observability/task-1.log",
+        eventLogFile: "/tmp/team-observability/task-1.events.jsonl",
       },
       {
         sessionName: "pi-team-observability",
@@ -260,6 +264,7 @@ describe("runTeam", () => {
         paneId: "%2",
         attachCommand: "tmux attach -t pi-team-observability",
         logFile: "/tmp/team-observability/task-2.log",
+        eventLogFile: "/tmp/team-observability/task-2.events.jsonl",
       },
     ]);
     const backendCalls: any[] = [];
@@ -297,6 +302,7 @@ describe("runTeam", () => {
         paneId: "%11",
         attachCommand: "tmux attach -t dev-session",
         logFile: "/tmp/current-window/task-1.log",
+        eventLogFile: "/tmp/current-window/task-1.events.jsonl",
         placement: "current-window",
       },
       {
@@ -305,6 +311,7 @@ describe("runTeam", () => {
         paneId: "%12",
         attachCommand: "tmux attach -t dev-session",
         logFile: "/tmp/current-window/task-2.log",
+        eventLogFile: "/tmp/current-window/task-2.events.jsonl",
         placement: "current-window",
       },
     ]);
