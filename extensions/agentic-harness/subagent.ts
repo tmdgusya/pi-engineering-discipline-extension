@@ -291,7 +291,44 @@ export function buildTmuxShellCommand(params: {
     .map(([key, value]) => `${key}=${shellQuote(value)}`);
   const command = [shellQuote(params.command), ...params.args.map(shellQuote)].join(" ");
   const invocation = ["env", ...envArgs, command].join(" ");
+  if (params.appendExitMarker === false) return `{ cd ${shellQuote(params.cwd)} && ${invocation}; } 2>&1`;
   return `{ cd ${shellQuote(params.cwd)} && ${invocation}; code=$?; printf '\\n${TMUX_EXIT_MARKER}%s\\n' "$code"; } 2>&1`;
+}
+
+function defaultTmuxEventLogFile(logFile: string): string {
+  const extension = extname(logFile);
+  if (extension) return `${logFile.slice(0, -extension.length)}.events.jsonl`;
+  return `${logFile}.events.jsonl`;
+}
+
+function buildPaneRendererProgram(eventLogFile: string): string {
+  return [
+    "const fs = require('fs');",
+    "const readline = require('readline');",
+    `const eventLogFile = ${JSON.stringify(eventLogFile)};`,
+    "function clamp(line) { return line.length <= 8000 ? line : line.slice(0, 8000) + '… [truncated ' + (line.length - 8000) + ' chars]'; }",
+    "function textParts(message) {",
+    "  if (!message || message.role !== 'assistant' || !Array.isArray(message.content)) return [];",
+    "  return message.content.filter((part) => part && part.type === 'text' && typeof part.text === 'string' && part.text.length > 0).map((part) => part.text);",
+    "}",
+    "function render(line) {",
+    "  if (!line.trim()) return [];",
+    "  let event;",
+    "  try { event = JSON.parse(line); } catch { return [line]; }",
+    "  if (!event || typeof event !== 'object') return [];",
+    "  if (event.type === 'message_end' || event.type === 'turn_end') return textParts(event.message).flatMap((text) => text.split(/\\r?\\n/).map(clamp));",
+    "  if (event.type === 'agent_end') return ['✓ worker completed'];",
+    "  if (event.type === 'tool_start' && typeof event.name === 'string') return ['→ ' + event.name];",
+    "  if (event.type === 'tool_end' && typeof event.name === 'string') return ['✓ ' + event.name];",
+    "  return [];",
+    "}",
+    "const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });",
+    "rl.on('line', (line) => {",
+    "  fs.appendFileSync(eventLogFile, line + '\\n');",
+    "  for (const rendered of render(line)) process.stdout.write(rendered + '\\n');",
+    "});",
+    "rl.on('close', () => process.exit(0));",
+  ].join("\n");
 }
 
 export function buildTmuxLaunchScript(params: {
