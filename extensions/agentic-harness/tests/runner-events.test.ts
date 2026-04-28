@@ -253,3 +253,25 @@ describe("nested subagent detection", () => {
     assert.equal(result.nestedCalls, undefined);
   });
 });
+
+describe("renderPiJsonLineForPane", () => {
+  it("renders assistant message events as readable text", async () => {
+    const { renderPiJsonLineForPane } = await import("../runner-events.js");
+    const line = JSON.stringify({
+      type: "message_end",
+      message: { role: "assistant", content: [{ type: "text", text: "Hello pane" }] },
+    });
+    expect(renderPiJsonLineForPane(line)).toEqual(["Hello pane"]);
+  });
+
+  it("renders completion compactly without exposing raw JSON", async () => {
+    const { renderPiJsonLineForPane } = await import("../runner-events.js");
+    expect(renderPiJsonLineForPane(JSON.stringify({ type: "agent_end", messages: [] }))).toEqual(["✓ worker completed"]);
+  });
+
+  it("suppresses unknown JSON events and passes through non-JSON diagnostics", async () => {
+    const { renderPiJsonLineForPane } = await import("../runner-events.js");
+    expect(renderPiJsonLineForPane(JSON.stringify({ type: "token_delta", text: "raw" }))).toEqual([]);
+    expect(renderPiJsonLineForPane("plain diagnostic")).toEqual(["plain diagnostic"]);
+  });
+});

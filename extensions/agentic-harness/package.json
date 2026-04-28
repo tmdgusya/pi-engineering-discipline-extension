@@ -8,9 +8,9 @@
     "build": "tsc --noEmit"
   },
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "latest",
+    "@mariozechner/pi-coding-agent": "^0.70.2",
     "@mariozechner/pi-tui": "latest",
-    "@sinclair/typebox": "^0.32.14",
+    "typebox": "^1.1.24",
     "turndown": "^7.2.0",
     "turndown-plugin-gfm": "^1.0.2"
   },

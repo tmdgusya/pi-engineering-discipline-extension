@@ -23,7 +23,20 @@ jobs:
           node-version: "22"
           cache: "npm"
 
-      - run: npm ci
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install agentic harness dependencies
+        run: npm ci
+        working-directory: extensions/agentic-harness
+
+      - name: Test agentic harness
+        run: npm test
+        working-directory: extensions/agentic-harness
+
+      - name: Build agentic harness
+        run: npm run build
+        working-directory: extensions/agentic-harness
 
       - run: npx semantic-release
         env:

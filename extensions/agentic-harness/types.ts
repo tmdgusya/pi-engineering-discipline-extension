@@ -37,6 +37,18 @@ export interface WorktreeMetadata {
   worktreeError?: string;
 }
 
+export interface TerminalMetadata {
+  backend: "native" | "tmux";
+  sessionName?: string;
+  windowName?: string;
+  paneId?: string;
+  attachCommand?: string;
+  logFile?: string;
+  eventLogFile?: string;
+  tmuxBinary?: string;
+  sessionAttempt?: string;
+}
+
 /** Result of a single subagent invocation. */
 export interface SingleResult {
   agent: string;
@@ -57,6 +69,7 @@ export interface SingleResult {
   contextMode?: "fresh" | "fork";
   contextError?: string;
   worktree?: WorktreeMetadata;
+  terminal?: TerminalMetadata;
 }
 
 /** Metadata attached to every tool result for rendering. */

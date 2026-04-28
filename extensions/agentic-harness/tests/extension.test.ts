@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, afterAll, describe, it, expect, vi } from "vitest";
 
 vi.mock("@mariozechner/pi-coding-agent", () => ({
@@ -30,6 +31,7 @@ const originalSubagentEnv = {
   PI_SUBAGENT_MAX_DEPTH: process.env.PI_SUBAGENT_MAX_DEPTH,
   PI_SUBAGENT_STACK: process.env.PI_SUBAGENT_STACK,
   PI_SUBAGENT_PREVENT_CYCLES: process.env.PI_SUBAGENT_PREVENT_CYCLES,
+  PI_TEAM_WORKER: process.env.PI_TEAM_WORKER,
 };
 
 beforeEach(() => {
@@ -37,6 +39,7 @@ beforeEach(() => {
   delete process.env.PI_SUBAGENT_MAX_DEPTH;
   delete process.env.PI_SUBAGENT_STACK;
   delete process.env.PI_SUBAGENT_PREVENT_CYCLES;
+  delete process.env.PI_TEAM_WORKER;
 });
 
 afterAll(() => {
@@ -94,6 +97,33 @@ describe("Extension Registration", () => {
     }
   });
 
+  it("should register team tool in root session", () => {
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    const tool = tools.get("team");
+    expect(tool).toBeDefined();
+    expect(tool.name).toBe("team");
+    expect(tool.promptGuidelines.length).toBeGreaterThan(0);
+  });
+
+  it("should NOT register team tool in subagent context", () => {
+    process.env.PI_SUBAGENT_DEPTH = "1";
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    expect(tools.get("team")).toBeUndefined();
+  });
+
+  it("should NOT register team or subagent tools in team-worker context", () => {
+    process.env.PI_TEAM_WORKER = "1";
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    expect(tools.get("team")).toBeUndefined();
+    expect(tools.get("subagent")).toBeUndefined();
+  });
+
   it("should register subagent tool", () => {
     const { mockPi, tools } = createMockPi();
     extension(mockPi);
@@ -106,6 +136,79 @@ describe("Extension Registration", () => {
     expect(tool.promptGuidelines.length).toBe(8);
     expect(tool.renderCall).toBeTypeOf("function");
     expect(tool.renderResult).toBeTypeOf("function");
+  });
+
+  it("should expose the documented team tool parameter contract", () => {
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    const tool = tools.get("team");
+    expect(tool).toBeDefined();
+    const schema = tool.parameters;
+    expect(schema.properties.goal).toBeDefined();
+    expect(schema.properties.workerCount).toBeDefined();
+    expect(schema.properties.agent).toBeDefined();
+    expect(schema.properties.agentScope).toBeDefined();
+    expect(schema.properties.worktree).toBeDefined();
+    expect(schema.properties.worktreePolicy).toBeDefined();
+    expect(schema.properties.backend).toMatchObject({
+      type: "string",
+      enum: ["auto", "native", "tmux"],
+      description: "Execution backend selection for team workers. auto prefers tmux when available.",
+    });
+    expect(schema.properties.backend.enum).toEqual(["auto", "native", "tmux"]);
+    expect(tool.description).toContain("lightweight native team");
+    const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+    expect(readme).toContain('`backend: "auto"` (default) prefers tmux when the binary is available and otherwise falls back to the native JSON subprocess backend.');
+    expect(readme).toContain("tmux attach -t <session>");
+    expect(readme).toContain("tmux kill-session -t");
+    expect(readme).toContain("Failed tmux team runs intentionally leave tmux panes/sessions alive");
+    expect(readme).toContain("sandbox");
+    expect(schema.properties.maxOutput).toBeDefined();
+    expect(schema.properties.runId).toBeDefined();
+    expect(schema.properties.resumeRunId).toBeDefined();
+    expect(schema.properties.resumeMode).toBeDefined();
+    expect(schema.properties.staleTaskMs).toBeDefined();
+    expect(schema.properties.commandTarget).toBeDefined();
+    expect(schema.properties.commandMessage).toBeDefined();
+    expect(schema.required ?? []).not.toContain("goal");
+  });
+
+  it("should register team tool in root session", () => {
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    const tool = tools.get("team");
+    expect(tool).toBeDefined();
+    expect(tool.name).toBe("team");
+    expect(tool.promptSnippet).toBeDefined();
+    expect(tool.promptGuidelines).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("coordinated multi-agent execution"),
+        expect.stringContaining("Workers must not recursively orchestrate"),
+      ]),
+    );
+    expect(tool.renderCall).toBeTypeOf("function");
+    expect(tool.renderResult).toBeTypeOf("function");
+  });
+
+  it("should NOT register team tool in subagent context", () => {
+    process.env.PI_SUBAGENT_DEPTH = "1";
+
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    expect(tools.get("team")).toBeUndefined();
+  });
+
+  it("should NOT register recursive orchestration tools in team-worker context", () => {
+    process.env.PI_TEAM_WORKER = "1";
+
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+
+    expect(tools.get("team")).toBeUndefined();
+    expect(tools.get("subagent")).toBeUndefined();
   });
 
   it("should register all root-session commands", () => {
@@ -339,12 +442,12 @@ describe("ask_user_question Tool", () => {
     );
 
     expect(result.content[0].text).toBe("Option A");
-    // Should auto-append "직접 입력하기"
+    // Should auto-append "Enter custom response"
     const selectChoices = mockCtx.ui.select.mock.calls[0][1];
-    expect(selectChoices).toContain("직접 입력하기");
+    expect(selectChoices).toContain("Enter custom response");
   });
 
-  it("should switch to input when 직접 입력하기 is selected", async () => {
+  it("should switch to input when Enter custom response is selected", async () => {
     const { mockPi, tools } = createMockPi();
     extension(mockPi);
 
@@ -352,7 +455,7 @@ describe("ask_user_question Tool", () => {
     const mockCtx: any = {
       ui: {
         input: vi.fn().mockResolvedValue("custom answer"),
-        select: vi.fn().mockResolvedValue("직접 입력하기"),
+        select: vi.fn().mockResolvedValue("Enter custom response"),
       },
     };
 

@@ -52,9 +52,20 @@ Bug reports can be filed directly as [GitHub Issues](https://github.com/tmdgusya
 ```bash
 cd extensions/agentic-harness
 npm test
+npm run build
 ```
 
-All changes must pass existing tests. New features should include new tests.
+All changes must pass existing tests and TypeScript build verification. New features should include new tests.
+
+### Team-mode release checklist
+
+For changes to the lightweight native `team` tool, also verify before merge:
+
+- `extensions/agentic-harness/README.md` has exactly one `## Lightweight Native Team Mode` section and lists only shipped behavior as shipped.
+- Deferred parity remains explicit for persistent resume, recorded inbox/outbox, heartbeat/status monitoring, staged pipelines, tmux runtime/live visualization, and default worktree-per-worker isolation unless those features are implemented and tested.
+- `docs/engineering-discipline/reviews/2026-04-27-roach-pi-team-mode-verification.md` contains current command evidence.
+- Lint status is documented; `extensions/agentic-harness` currently has no `lint` script.
+- The PR uses conventional commits that match the change type, such as `feat(agentic-harness):`, `test(agentic-harness):`, `docs(agentic-harness):`, or `ci:`.
 
 ## Code Style
 
