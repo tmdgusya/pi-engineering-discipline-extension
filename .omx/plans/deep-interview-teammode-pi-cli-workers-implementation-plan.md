@@ -1,175 +1,333 @@
-# Coordinated Team Implementation Plan: Readable pi CLI-Style tmux Worker Panes
+# Team Mode Pi-CLI Worker Panes: Implementation Plan
 
-## Goal
-Make `/team` tmux teammate panes readable like normal pi CLI worker sessions while preserving the orchestrator's reliable structured result collection and final team summary.
+Date: 2026-04-28  
+Owner lane: worker-3 / planner  
+Source spec: `/Users/lit/.pi/agent/git/github.com/tmdgusya/roach-pi/.omx/specs/deep-interview-teammode-pi-cli-workers.md`  
+Task: plan only; no production code implementation in this lane.
 
-## Evidence From Repository Inspection
-- `.omx/specs/deep-interview-teammode-pi-cli-workers.md` states the primary acceptance target: teammate tmux panes must show readable pi CLI-style progress/conversation, not raw JSON event lines, while orchestration reliability wins in any tradeoff.
-- `extensions/agentic-harness/subagent.ts` currently builds worker invocations with `buildPiArgs(...)`, which always includes `--mode json`; the same process output is both visible in tmux panes and parsed by `processPiJsonLine(...)` for `SingleResult` aggregation.
-- `extensions/agentic-harness/team.ts` already resolves `backend=auto|native|tmux`, creates tmux panes through `createWorkerPanes(...)`, stores `task.terminal`, and calls `runtime.runTask(...)` per worker.
-- `extensions/agentic-harness/tmux.ts` already creates/splits panes, attaches `pipe-pane` log capture, returns pane/log metadata, and uses deterministic tmux attach metadata.
-- `extensions/agentic-harness/runner-events.ts` parses newline-delimited JSON events into `SingleResult`; preserving this parser path is the safest way to keep orchestrator summaries reliable.
-- Existing tests cover tmux setup/logging and orchestration basics (`tests/tmux.test.ts`, `tests/subagent-process.test.ts`, `tests/team.test.ts`, `tests/team-e2e-tmux.test.ts`), but do not yet assert that pane-visible output is non-JSON/readable.
+## Scope and classification
 
-## Task Classification
-- Type: brownfield UX/architecture refinement.
-- Complexity: HIGH, because one stream currently serves two consumers: human-readable tmux pane UI and machine-readable orchestration events.
-- Implementation shape: staged refactor behind tmux backend paths; native backend should remain JSON-driven and unchanged.
+- **Task type:** refactor / UX-observability enhancement for existing team-mode tmux backend.
+- **Primary goal:** teammate tmux panes should be readable pi CLI-style worker sessions, not raw JSON event streams.
+- **Non-negotiable constraint:** preserve orchestrator completion/result collection and final team summary reliability.
+- **Estimated complexity:** MEDIUM-HIGH because the visible terminal stream is currently also the machine-readable event stream.
 
-## Architecture Options Compared
+## Repository evidence baseline
 
-### Option A — Switch tmux workers from `--mode json` to normal pi mode and parse human text
-- **How it works:** remove `--mode json` for tmux, then infer completion/final output from plain pane logs.
-- **Pros:** teammate panes become readable immediately; minimal tmux-pane UI work.
-- **Cons:** breaks or weakens structured `SingleResult` collection; final summaries become heuristic; failure detection becomes less deterministic.
-- **Verdict:** Reject. It violates the spec's `preserve-orchestration` priority.
+- `extensions/agentic-harness/subagent.ts:165-172` always builds delegated worker invocations with `--mode json`.
+- `extensions/agentic-harness/subagent.ts:550-650` runs tmux workers by sending a shell command into a pane and then parsing lines from the pane log with `processPiJsonLine`.
+- `extensions/agentic-harness/subagent.ts:644-650` treats the same tmux log as both the exit-marker channel and JSON event source.
+- `extensions/agentic-harness/runner-events.ts:84-112` is the current structured event parser for `message_end`, `turn_end`, and `agent_end` JSON events.
+- `extensions/agentic-harness/tmux.ts:145-243` creates worker panes and pipes pane output to `task-N.log`; this log is currently what users see and what the orchestrator polls.
+- `extensions/agentic-harness/team.ts:371-399` assigns tmux pane metadata to tasks and emits attach/log details before worker execution.
+- `extensions/agentic-harness/index.ts:356-379` maps tmux-backed tasks to `runAgent({ executionMode: "tmux", tmuxPane })`.
+- Existing tests already cover tmux command quoting, tmux pane creation, tmux process lifecycle, resolved tmux binary usage, and a fake tmux team e2e path under `extensions/agentic-harness/tests/`.
 
-### Option B — Keep `--mode json`, but add a pane-output filter/pretty-printer process
-- **How it works:** continue running worker pi in JSON mode, route stdout through a formatter that prints readable status to the pane while also teeing raw JSON to a side-channel log for the orchestrator.
-- **Pros:** preserves existing JSON event contract and result parser; limits changes to tmux execution path; can be tested with fake runner/logs; no new dependencies required.
-- **Cons:** needs careful stream routing to avoid leaking raw JSON into visible panes; formatter must handle partial lines and malformed lines; terminal output will be “pi-style/readable” rather than literally the native pi TUI.
-- **Verdict:** Recommended first implementation. It best satisfies readable panes and reliable orchestration with minimal architectural churn.
+## Architecture options compared
 
-### Option C — Dual-run/sidecar: one interactive pi CLI pane plus a separate hidden JSON worker
-- **How it works:** launch a normal pi CLI worker for visible pane UX and a separate JSON-mode worker for orchestration.
-- **Pros:** maximum visual fidelity for panes while preserving JSON parser for the hidden run.
-- **Cons:** doubles worker execution/cost, creates divergence between visible and collected results, complicates cancellation, worktree writes, and side effects.
-- **Verdict:** Reject for first pass. Too risky and wasteful for team workers that may modify files.
+### Option A — Run workers in normal/non-JSON pi mode and scrape human output
 
-### Option D — Extend pi CLI with a first-class split-stream mode
-- **How it works:** add/consume a pi mode that emits human UI to stdout and structured events to a file descriptor/path.
-- **Pros:** clean long-term architecture if upstream pi supports it.
-- **Cons:** likely outside this repo's extension boundary and not evidenced in current code; would require external API/version research.
-- **Verdict:** Defer. Track as future upstream integration if Option B proves insufficient.
+**Shape:** For tmux backend only, remove `--mode json` and let worker panes show the default pi CLI output. Infer completion and summary from process exit plus readable stdout.
 
-## Recommended Architecture
-Adopt **Option B: tmux-only JSON side-channel with human-readable pane renderer**.
+**Pros**
+- Best immediate pane readability.
+- Small apparent code change in argument construction.
 
-For tmux execution only:
-1. Keep worker invocation in `--mode json` so existing `runner-events.ts` and `SingleResult` aggregation remain authoritative.
-2. Add a small local Node renderer script/module that reads JSON-mode stdout line-by-line and writes concise readable progress to the tmux pane.
-3. Tee the unmodified JSON event stream to a machine-readable event log separate from the human pane log.
-4. Change tmux log polling in `runAgent(... executionMode: "tmux")` to parse the raw JSON side-channel log, not the pane-visible `pipe-pane` log.
-5. Preserve the existing `pipe-pane` log as human/debug output and retain terminal metadata in summaries.
+**Cons**
+- Breaks current structured parsing contract in `runner-events.ts`.
+- Makes `agent_end` / assistant final-output detection unreliable.
+- Hard to preserve usage/model/error metadata.
+- Tmux pane UI changes could silently break orchestration.
 
-Suggested stream layout:
-- `tmuxPane.logFile`: visible/debug pane transcript captured by tmux `pipe-pane`; should be readable and not raw event spam.
-- `tmuxPane.eventLogFile` or derived path next to `logFile` (for example `task-1.events.ndjson`): raw JSON events consumed by orchestrator parser.
-- exit marker: keep in the pane transcript for current polling only if needed, or move to a separate status marker file if raw JSON side-channel polling becomes authoritative. Prefer a separate marker/status file for clean pane UX if feasible in the same pass.
+**Decision:** reject for implementation. It optimizes the pane at the expense of the clarified reliability constraint.
 
-## Staged Implementation Plan
+### Option B — Keep JSON workers and add a pane beautifier/filter over the same stream
 
-### Stage 1 — Lock the readable-pane contract with failing tests
-**Owner lane:** test-engineer
-**Files:**
+**Shape:** Continue launching `pi --mode json`, but pipe stdout through a renderer that transforms JSON events into readable text before the stream reaches the tmux pane and pane log.
+
+**Pros**
+- Keeps JSON as the source event format.
+- Moderate implementation size.
+- Visible pane becomes readable.
+
+**Cons**
+- If the renderer replaces stdout, the orchestrator can no longer parse the pane log as raw JSON.
+- If the renderer merely adds readable lines around JSON, pane readability remains poor and parsing becomes noisier.
+- Exit marker and parsing responsibilities remain coupled to one log file.
+
+**Decision:** viable only if paired with a separate structured side-channel. By itself, do not implement.
+
+### Option C — Dual-channel tmux launch: readable pane renderer + structured event side-channel
+
+**Shape:** Keep the underlying worker invocation in `--mode json`. In tmux mode, wrap it with a small dependency-free adapter that:
+
+1. reads raw JSON stdout from pi,
+2. appends exact raw JSON event lines to a structured machine log,
+3. renders selected events into readable CLI-style pane output,
+4. preserves stderr in the visible pane/log for diagnostics,
+5. records a robust exit marker in a channel the orchestrator can observe.
+
+The orchestrator then parses the structured event log with the existing `processPiJsonLine` path and uses the readable pane log only for human diagnostics / failure tails.
+
+**Pros**
+- Preserves machine-readable event collection.
+- Delivers readable tmux panes without changing native backend behavior.
+- Keeps failure panes useful because stderr and readable summaries stay visible.
+- Allows incremental tests with fake JSON producers; no real model process required.
+
+**Cons**
+- Requires careful process/pipe exit handling.
+- Requires extending `TmuxPaneRef` / `TeamTerminalMetadata` with an event log path or equivalent.
+- Adds a small renderer surface that must tolerate unknown JSON events.
+
+**Decision:** recommended architecture.
+
+### Option D — Two-process mirror: hidden JSON worker plus separate read-only viewer pane
+
+**Shape:** Keep the worker running as today for orchestration and start a separate viewer process in tmux that watches the worker event log and renders it.
+
+**Pros**
+- Very strong separation between worker execution and display.
+- Easier to kill/restart viewer without touching worker.
+
+**Cons**
+- Doubles pane/process coordination complexity.
+- The pane is a viewer, not the worker session; this may be misleading.
+- More cleanup/lifecycle edge cases.
+
+**Decision:** keep as fallback only if Option C proves too fragile.
+
+## Recommended design
+
+Implement **Option C: dual-channel tmux launch**.
+
+### Target data flow
+
+```text
+/team orchestrator
+  -> runTeam(... backend="tmux")
+  -> createWorkerPanes(...)
+  -> runAgent(executionMode="tmux")
+       -> build pi --mode json args as today
+       -> launch wrapper inside tmux pane
+            pi --mode json ...
+              stdout(raw JSON) -> adapter
+                -> append exact event line to structuredEventLogFile
+                -> print readable line(s) to pane stdout
+              stderr -> pane stderr/stdout for human diagnostics
+            exit code -> explicit marker available to orchestrator
+       -> orchestrator polls structuredEventLogFile for JSON events
+       -> orchestrator detects exit marker / process completion
+       -> final summary uses existing result model
+```
+
+### User-visible pane format
+
+Start with a conservative renderer, not a full TUI clone:
+
+- print a header: worker/task identity, cwd/worktree if known, backend/log paths;
+- for assistant `message_end` / `turn_end`, render the latest assistant text with simple prefixes;
+- for `agent_end`, print a completion marker and the final assistant answer if not already printed;
+- for unknown events, suppress by default or render a terse progress marker only when useful;
+- for non-JSON stdout, pass through visibly and mark it as non-structured;
+- preserve stderr visibly.
+
+This satisfies “readable pi CLI-style progress/conversation” while avoiding a brittle imitation of pi internals.
+
+## Staged implementation plan
+
+### Stage 0 — Contract and fixture lock
+
+**Goal:** prove the current coupling and lock expected behavior before changing it.
+
+**Implementation tasks**
+1. Add tests around a pure renderer/parser boundary before touching launch code.
+2. Add fixtures with representative JSON lines for `message_end`, `turn_end`, `agent_end`, unknown events, malformed lines, stderr text, and final-output duplication.
+3. Assert that existing native backend behavior remains unchanged.
+
+**Likely files**
+- `extensions/agentic-harness/tests/runner-events.test.ts`
+- new `extensions/agentic-harness/tests/tmux-renderer.test.ts` or equivalent
+- possibly new `extensions/agentic-harness/tmux-renderer.ts`
+
+**Acceptance criteria**
+- Existing tests still pass.
+- Renderer fixtures define readable output without requiring a real `pi` subprocess.
+- No production launch path changes yet.
+
+### Stage 1 — Add dependency-free JSON-to-readable renderer
+
+**Goal:** create the adapter logic as a small, testable module.
+
+**Implementation tasks**
+1. Create a pure function/module that accepts one stdout line and returns:
+   - raw structured line to persist, when JSON is valid;
+   - zero or more readable pane lines;
+   - parser metadata such as whether `agent_end` was observed.
+2. Reuse concepts from `runner-events.ts` to avoid divergent interpretation of assistant messages.
+3. Keep formatting intentionally simple and stable; do not import new UI dependencies.
+4. Add tests for deduplication and malformed JSON passthrough.
+
+**Likely files**
+- new `extensions/agentic-harness/tmux-renderer.ts` or `worker-display.ts`
+- `extensions/agentic-harness/tests/tmux-renderer.test.ts`
+
+**Acceptance criteria**
+- JSON event lines can be converted into readable text while retaining exact raw event lines for machine parsing.
+- Unknown JSON does not crash the renderer.
+- Malformed stdout remains visible for diagnostics.
+
+### Stage 2 — Extend tmux metadata for structured side-channel logs
+
+**Goal:** represent separate human and machine logs explicitly.
+
+**Implementation tasks**
+1. Extend `TmuxPaneRef` / `TeamTerminalMetadata` with something like `eventLogFile` or `structuredLogFile` while keeping `logFile` as the pane-visible log.
+2. Generate per-task side-channel paths under the existing `.pi/agent/runs/<runId>/tmux/` directory, e.g.:
+   - `task-1.log` for visible pane output;
+   - `task-1.events.jsonl` for raw JSON events.
+3. Persist the new metadata through `team.ts` task terminal assignment and `index.ts` `runAgent` call.
+4. Maintain backward-compatible behavior when `eventLogFile` is absent.
+
+**Likely files**
+- `extensions/agentic-harness/tmux.ts`
+- `extensions/agentic-harness/team.ts`
+- `extensions/agentic-harness/types.ts`
+- `extensions/agentic-harness/index.ts`
+- `extensions/agentic-harness/tests/tmux.test.ts`
+- `extensions/agentic-harness/tests/team.test.ts`
+
+**Acceptance criteria**
+- Tmux task metadata includes both visible and structured log references.
+- Current attach/log notifications remain accurate and include enough information for debugging.
+- Native backend remains untouched.
+
+### Stage 3 — Wire tmux launch wrapper to split streams
+
+**Goal:** make tmux workers visible as readable sessions while the orchestrator parses the structured log.
+
+**Implementation tasks**
+1. Update `buildTmuxLaunchScript` / tmux-mode launch generation to run the worker command through the adapter.
+2. Preserve safe shell quoting and the existing regression guards in `tests/tmux-command.test.ts`.
+3. Ensure raw stdout JSON is appended exactly once to `eventLogFile`; do not duplicate via `pipe-pane`.
+4. Keep visible pane output readable and append the same readable pane output to `logFile` via existing `pipe-pane`.
+5. Preserve stderr visibility and failure diagnostics.
+6. Preserve exit code handling with `pipefail` or an equivalent explicit status path; do not let renderer success mask worker failure.
+
+**Likely files**
+- `extensions/agentic-harness/subagent.ts`
+- new helper script/module if needed under `extensions/agentic-harness/`
+- `extensions/agentic-harness/tests/subagent-process.test.ts`
+- `extensions/agentic-harness/tests/tmux-command.test.ts`
+
+**Acceptance criteria**
+- The pane-visible log contains readable lines and no raw JSON event stream for normal JSON events.
+- The structured event log contains parseable raw JSON events.
+- Worker exit code is preserved even when the renderer succeeds.
+- Existing command injection / newline regression tests still pass.
+
+### Stage 4 — Move tmux orchestrator polling to structured event log
+
+**Goal:** decouple result collection from pane-visible output.
+
+**Implementation tasks**
+1. In tmux execution mode, read new bytes from `eventLogFile` for `processPiJsonLine` instead of reading JSON from `logFile`.
+2. Continue to use visible `logFile` for failure tails and diagnostics, filtering out any accidental raw JSON as today.
+3. Detect completion through the existing exit marker if it remains in the visible log, or through a new structured exit-status file/marker if Stage 3 introduces one.
+4. Preserve semantic reap behavior based on `agent_end` and final assistant output.
+
+**Likely files**
+- `extensions/agentic-harness/subagent.ts`
 - `extensions/agentic-harness/tests/subagent-process.test.ts`
 - `extensions/agentic-harness/tests/team-e2e-tmux.test.ts`
-- possibly `extensions/agentic-harness/tests/tmux.test.ts`
 
-**Tasks:**
-1. Add a focused tmux `runAgent` test with a fake pi worker that emits JSON events. Assert:
-   - `SingleResult.messages` still contains the final assistant message.
-   - the pane-visible/log transcript does not contain raw JSON event lines such as `{"type":"message_end"...}`.
-   - the pane-visible/log transcript contains readable text derived from assistant output or lifecycle progress.
-2. Extend the tmux team e2e test to assert final `TeamRunSummary` still completes and the captured pane log includes readable worker output.
-3. Add a regression case for malformed/non-JSON stdout lines to ensure the renderer passes or reports them usefully without breaking event parsing.
+**Acceptance criteria**
+- `runAgent(executionMode="tmux")` returns the same `SingleResult` fields for successful fake runs as before.
+- Failure tails still contain useful human-readable stderr/text.
+- Tmux runs no longer require raw JSON to be visible in the pane.
 
-**Acceptance criteria:** tests fail on current `--mode json` pane behavior and express the new UX contract without requiring real tmux.
+### Stage 5 — Documentation and operator-facing release notes
 
-### Stage 2 — Add a tmux worker stream renderer and side-channel event log
-**Owner lane:** executor
-**Files:**
-- create `extensions/agentic-harness/tmux-renderer.ts` or equivalent helper in `subagent.ts` if small
-- modify `extensions/agentic-harness/subagent.ts`
-- modify `extensions/agentic-harness/types.ts` if terminal metadata needs `eventLogFile`
-- tests from Stage 1
+**Goal:** document shipped behavior accurately once implemented.
 
-**Tasks:**
-1. Introduce a formatter that maps JSON events to readable pane lines. Minimum useful rendering:
-   - `message_end` / `turn_end`: print the assistant text content in a readable block or prefixed line.
-   - `agent_end`: print a concise completion line.
-   - unknown events: suppress or compactly label; do not print raw JSON by default.
-   - non-JSON lines/stderr: pass through so failures remain diagnosable.
-2. Add a raw JSON side-channel file path per tmux invocation, preferably derived from `tmuxPane.logFile` (`task-1.events.ndjson`) and persisted in terminal metadata if useful for debugging.
-3. Update tmux launch script generation so worker stdout is split:
-   - raw stdout JSON is written to the event log unchanged.
-   - readable rendered output goes to pane stdout/stderr, which `pipe-pane` captures into `tmuxPane.logFile`.
-4. Keep secrets out of `send-keys`: continue using the existing temporary launch script pattern instead of embedding full env/args directly in tmux command text.
+**Implementation tasks**
+1. Update `extensions/agentic-harness/README.md` tmux backend notes to state that panes show readable worker output while structured event logs remain available for orchestration/debugging.
+2. Update `TEAM_ARCH.md` with the new two-log data flow and lifecycle diagram.
+3. Update `CONTRIBUTING.md` team-mode checklist with the additional tmux-readable-pane verification gate.
+4. Add a short verification report under `docs/engineering-discipline/reviews/` after implementation.
 
-**Acceptance criteria:** tmux pane transcript is readable, raw JSON side-channel exists for parsing, and send-keys payload does not include sensitive env values.
-
-### Stage 3 — Move tmux orchestration parsing to the raw event side-channel
-**Owner lane:** executor
-**Files:**
-- `extensions/agentic-harness/subagent.ts`
-- `extensions/agentic-harness/types.ts` if needed
-- `extensions/agentic-harness/tests/subagent-process.test.ts`
-
-**Tasks:**
-1. In tmux mode, poll/read the event log for `processPiJsonLine(...)` instead of the human pane log.
-2. Keep offset-based incremental reads and existing `agent_end` semantic reap behavior.
-3. Separate completion detection from human pane content. Recommended:
-   - keep `TMUX_EXIT_MARKER` in a dedicated exit/status file, or
-   - write the marker to the event side-channel as a non-JSON sentinel, not the readable pane transcript.
-4. Update failure-tail logic to prefer readable pane log tail for human diagnostics, while parsing structured results from the side-channel.
-
-**Acceptance criteria:** orchestrator still detects success/failure and final assistant output from JSON events; pane log stays readable; failures include useful human-readable tail text.
-
-### Stage 4 — Team integration and metadata polish
-**Owner lane:** executor + planner/reviewer
-**Files:**
-- `extensions/agentic-harness/team.ts`
-- `extensions/agentic-harness/tmux.ts`
-- `extensions/agentic-harness/types.ts`
+**Likely files**
 - `extensions/agentic-harness/README.md`
-- `TEAM_ARCH.md` if public architecture docs need updating
+- `TEAM_ARCH.md`
+- `CONTRIBUTING.md`
+- `docs/engineering-discipline/reviews/<date>-team-tmux-readable-panes.md`
 
-**Tasks:**
-1. Propagate any new terminal metadata (`eventLogFile`, `paneLogFile`, or status file) in `TeamTerminalMetadata`/`TerminalMetadata` without breaking native backend metadata.
-2. Ensure `synthesizeTeamRun(...)` and final summaries still show attach commands and useful log paths.
-3. Document that tmux backend uses readable pane rendering while retaining raw JSON event side-channel for orchestration.
-4. Confirm backend semantics remain unchanged: `auto` still prefers tmux when available, `native` stays raw JSON parser path, `tmux` explicitly uses the readable-pane side-channel design.
+**Acceptance criteria**
+- Docs no longer imply raw pane logs are the machine event source.
+- Docs distinguish `task-N.log` visible logs from structured event logs.
+- Deferred/non-goal behavior remains explicit: readable panes are not a live human control channel.
 
-**Acceptance criteria:** summaries remain useful, metadata remains backward-compatible, and docs explain debug locations.
+### Stage 6 — End-to-end validation and release gate
 
-### Stage 5 — Verification and release hardening
-**Owner lane:** verifier/build-fixer
-**Files:** no planned source edits unless tests reveal issues.
+**Goal:** verify the full behavior with deterministic tests plus one real tmux smoke where available.
 
-**Tasks:**
-1. Run focused tests:
-   - `cd extensions/agentic-harness && npm test -- --run tests/subagent-process.test.ts tests/tmux.test.ts tests/team.test.ts tests/team-e2e-tmux.test.ts`
-2. Run full package verification:
-   - `cd extensions/agentic-harness && npm run build && npm test`
-3. Manually or with fake tmux evidence, verify:
-   - pane-visible transcript is readable/non-JSON.
-   - raw event side-channel contains parseable JSON events.
-   - final team summary reports worker completion.
-   - failure case preserves readable diagnostic output.
-4. If a real tmux smoke test is available locally, run one small `/team backend=tmux workerCount=1` style scenario and capture pane/log evidence.
+**Implementation tasks**
+1. Extend fake tmux e2e test to assert visible output is readable and structured event log is parseable.
+2. Add a manual/optional smoke command for real tmux backend when available.
+3. Run full extension tests and typecheck.
+4. If no lint script exists, document lint as not available rather than inventing a gate.
 
-**Acceptance criteria:** all targeted and full tests pass; at least one smoke/e2e path proves readable pane output plus final summary.
+**Verification commands**
+- `cd extensions/agentic-harness && npm test -- tests/tmux-command.test.ts tests/tmux.test.ts tests/subagent-process.test.ts tests/team-e2e-tmux.test.ts`
+- `cd extensions/agentic-harness && npm test`
+- `cd extensions/agentic-harness && npm run build`
+- Optional real smoke when tmux and pi are available: run a small `/team ... backend=tmux worker-count=1` and inspect pane output plus final summary.
 
-## Implementation Lanes
-- **Lane A — Contract/tests (test-engineer):** own Stage 1 and verification assertions. Do not modify production behavior except test fixtures.
-- **Lane B — Stream rendering/runtime (executor):** own Stage 2 and Stage 3 in `subagent.ts` plus helper module.
-- **Lane C — Team metadata/docs (executor/writer):** own Stage 4 public metadata and docs.
-- **Lane D — Verification (verifier/build-fixer):** own Stage 5, diagnose build/test failures, and ensure native backend regression safety.
+**Acceptance criteria**
+- Test suite passes without external model calls.
+- Typecheck passes.
+- Optional smoke demonstrates readable pane output and successful team final synthesis.
 
-## Risk Register
-1. **Raw JSON leaks into panes.** Mitigate with tests that inspect pane logs and with renderer default suppressing raw event lines.
-2. **Orchestrator loses final result.** Mitigate by keeping `--mode json` and `processPiJsonLine(...)` authoritative on the event side-channel.
-3. **Exit marker contaminates readable UX.** Prefer separate status/exit file or event side-channel sentinel; assert pane log stays clean enough.
-4. **Renderer hides useful failure output.** Pass through stderr/non-JSON lines and use readable pane log tail for `stderr`/`errorMessage` on failure.
-5. **Shell quoting or secret leakage regression.** Preserve launch-script strategy and existing secret assertions in tmux tests.
-6. **Native backend regression.** Keep changes gated to `executionMode === "tmux"`; run native subagent/team tests.
-7. **Large output/performance issues.** Keep offset-based reads; cap rendered snippets and failure tails.
+## Suggested implementation lanes
 
-## Non-goals for This Plan
-- Do not replace the team orchestrator model.
-- Do not make worker panes fully interactive/manual-control sessions unless a later requirement asks for it.
-- Do not add dependencies.
-- Do not change native backend output semantics.
+1. **Executor lane A — renderer + side-channel metadata**
+   - Owns new renderer module, metadata types, `tmux.ts` side-channel path creation, renderer tests.
+   - Suggested role: `executor` or `test-engineer` pair.
+   - Reasoning: medium.
 
-## Completion Definition
-The work is complete when a tmux-backed team run displays readable pi-style worker progress in teammate panes, the leader/orchestrator still produces structured final summaries from worker JSON events, failures remain diagnosable from logs/panes, and the full `extensions/agentic-harness` build/test suite passes.
+2. **Executor lane B — tmux launch/polling integration**
+   - Owns `subagent.ts` stream splitting, event-log polling, exit-code preservation, process tests.
+   - Suggested role: `executor` with `debugger` support if process lifecycle flakes.
+   - Reasoning: high.
+
+3. **Docs lane — user and maintainer docs**
+   - Owns README / TEAM_ARCH / CONTRIBUTING updates after code behavior is proven.
+   - Suggested role: `writer`.
+   - Reasoning: medium.
+
+4. **Verifier lane — independent acceptance pass**
+   - Runs targeted tests, full tests, build, and optional real tmux smoke.
+   - Inspects panes/logs for raw JSON leakage and structured summary reliability.
+   - Suggested role: `verifier` or `test-engineer`.
+   - Reasoning: high for real tmux/process validation.
+
+## Risks and mitigations
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| Renderer masks worker exit failures | Orchestrator reports false success | Preserve explicit exit status with `pipefail`/status marker tests. |
+| Structured event log and visible pane log diverge | Debugging becomes confusing | Persist both paths in task terminal metadata and summaries. |
+| Raw JSON still leaks visibly | Acceptance criterion fails | Add tests asserting normal JSON events are absent from pane-visible log. |
+| Unknown JSON event breaks renderer | Worker display stalls | Unknown JSON should be suppressed or rendered tersely, never throw. |
+| Shell quoting regression in tmux send-keys | Worker command desyncs | Keep `tmux-command.test.ts` newline/quoting guards and add adapter-path cases. |
+| Adapter adds too much formatting complexity | Maintenance burden | Start with simple line-oriented rendering; no new dependencies. |
+| Real pi CLI event schema differs from fixtures | Smoke failure after unit pass | Build fixtures from current `runner-events.ts` accepted event types and run optional real smoke before release. |
+
+## Definition of done
+
+- Tmux worker panes show readable worker progress/conversation for normal team runs, not raw JSON event lines.
+- Orchestrator still receives structured events and produces correct success/failure final summaries.
+- Worker failure state and final assistant output remain detectable.
+- Failure panes/logs remain useful for diagnosis.
+- Native backend behavior and existing team command semantics do not regress.
+- README / TEAM_ARCH / CONTRIBUTING describe the new two-channel tmux behavior accurately.
