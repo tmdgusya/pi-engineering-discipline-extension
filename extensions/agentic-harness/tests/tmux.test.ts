@@ -54,7 +54,17 @@ describe("tmux helpers", () => {
   });
 
   it("constructs deterministic pane creation and logging commands", async () => {
-    const { runner, calls } = createMockRunner(["%1\n", "", "%2\n", "", ""]);
+    const { runner, calls } = createMockRunner([
+      "%1\n", // new-session
+      "",     // set-option mouse on
+      "",     // set-option set-clipboard on
+      "",     // show-options mode-style (empty global)
+      "",     // show-options copy-mode-selection-style (empty global)
+      "",     // pipe-pane task-1
+      "%2\n", // split-window
+      "",     // pipe-pane task-2
+      "",     // select-layout
+    ]);
 
     await expect(
       createWorkerPanes({
@@ -86,6 +96,10 @@ describe("tmux helpers", () => {
     ]);
     expect(calls).toEqual([
       { file: "tmux", args: ["new-session", "-d", "-s", "pi-team-demo", "-n", "workers", "-P", "-F", "#{pane_id}"] },
+      { file: "tmux", args: ["set-option", "-t", "pi-team-demo", "mouse", "on"] },
+      { file: "tmux", args: ["set-option", "-t", "pi-team-demo", "set-clipboard", "on"] },
+      { file: "tmux", args: ["show-options", "-gv", "-t", "pi-team-demo", "mode-style"] },
+      { file: "tmux", args: ["show-options", "-gv", "-t", "pi-team-demo", "copy-mode-selection-style"] },
       { file: "tmux", args: ["pipe-pane", "-t", "%1", "-o", "cat >> '/tmp/John Doe/a;b/task-1.log'"] },
       { file: "tmux", args: ["split-window", "-t", "pi-team-demo:workers", "-P", "-F", "#{pane_id}"] },
       { file: "tmux", args: ["pipe-pane", "-t", "%2", "-o", "cat >> '/tmp/John Doe/a;b/task-2.log'"] },
@@ -132,13 +146,14 @@ describe("tmux helpers", () => {
       { file: "tmux", args: ["pipe-pane", "-t", "%12", "-o", "cat >> '/tmp/current-window/task-2.log'"] },
       { file: "tmux", args: ["select-layout", "-t", "@3", "tiled"] },
     ]);
+    expect(calls.some((call) => call.args[0] === "set-option" && call.args.includes("mouse"))).toBe(false);
   });
 
   it("retries session creation with a collision-safe suffix without killing the existing session", async () => {
     const calls: Array<{ file: string; args: string[] }> = [];
     const runner: TmuxCommandRunner = (file, args, _options, callback) => {
       calls.push({ file, args: [...args] });
-      if (args[0] === "new-session" && args.includes("pi-run")) {
+      if (args[0] === "new-session" && args.includes("pi-run") && !args.some((arg) => arg.includes("attempt"))) {
         callback(new Error("duplicate session: pi-run"), "", "duplicate session: pi-run");
         return;
       }
@@ -175,10 +190,45 @@ describe("tmux helpers", () => {
     expect(calls.map((call) => call.args)).toEqual([
       ["new-session", "-d", "-s", "pi-run", "-n", "workers", "-P", "-F", "#{pane_id}"],
       ["new-session", "-d", "-s", "pi-run-attempt-retry1", "-n", "workers", "-P", "-F", "#{pane_id}"],
+      ["set-option", "-t", "pi-run-attempt-retry1", "mouse", "on"],
+      ["set-option", "-t", "pi-run-attempt-retry1", "set-clipboard", "on"],
+      ["show-options", "-gv", "-t", "pi-run-attempt-retry1", "mode-style"],
+      ["show-options", "-gv", "-t", "pi-run-attempt-retry1", "copy-mode-selection-style"],
       ["pipe-pane", "-t", "%1", "-o", "cat >> '/tmp/run/task-1.log'"],
       ["select-layout", "-t", "pi-run-attempt-retry1:workers", "tiled"],
     ]);
     expect(calls.some((call) => call.args[0] === "kill-session")).toBe(false);
+  });
+
+  it("skips mouse-scroll setup when PI_TEAM_MOUSE=0 is set in the call env", async () => {
+    const { runner, calls } = createMockRunner(["%1\n", "", ""]);
+
+    await expect(
+      createWorkerPanes({
+        runId: "team-demo",
+        workerCount: 1,
+        logDir: "/tmp/optout",
+        commandRunner: runner,
+        env: { PI_TEAM_MOUSE: "0" },
+      }),
+    ).resolves.toEqual([
+      {
+        sessionName: "pi-team-demo",
+        windowName: "workers",
+        paneId: "%1",
+        attachCommand: "tmux attach -t pi-team-demo",
+        logFile: "/tmp/optout/task-1.log",
+        eventLogFile: "/tmp/optout/task-1.events.jsonl",
+        placement: "detached-session",
+      },
+    ]);
+    expect(calls).toEqual([
+      { file: "tmux", args: ["new-session", "-d", "-s", "pi-team-demo", "-n", "workers", "-P", "-F", "#{pane_id}"] },
+      { file: "tmux", args: ["pipe-pane", "-t", "%1", "-o", "cat >> '/tmp/optout/task-1.log'"] },
+      { file: "tmux", args: ["select-layout", "-t", "pi-team-demo:workers", "tiled"] },
+    ]);
+    expect(calls.some((call) => call.args.includes("mouse"))).toBe(false);
+    expect(calls.some((call) => call.args.includes("set-clipboard"))).toBe(false);
   });
 
   it("kills tmux sessions and panes best-effort", async () => {

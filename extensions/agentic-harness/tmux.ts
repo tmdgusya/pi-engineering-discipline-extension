@@ -286,6 +286,10 @@ export async function createWorkerPanes(options: CreateWorkerPanesOptions): Prom
   const firstPaneId = parsePaneIds(firstPaneOutput)[0];
   if (!firstPaneId) throw new Error("tmux did not return a pane id for the new session");
 
+  if ((env.PI_TEAM_MOUSE ?? "1") !== "0") {
+    await enableMouseScrolling(commandRunner, binary, sessionName);
+  }
+
   const firstLogFile = join(options.logDir, "task-1.log");
   const firstEventLogFile = join(options.logDir, "task-1.events.jsonl");
   await pipePane(commandRunner, binary, firstPaneId, firstLogFile);
