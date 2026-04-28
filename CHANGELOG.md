@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.13.0](https://github.com/tmdgusya/roach-pi/compare/v1.12.0...v1.13.0) (2026-04-28)
+
+### Features
+
+* improve team mode summary output ([8643e78](https://github.com/tmdgusya/roach-pi/commit/8643e78c080e2a2da7df60ee50cffff68474da11))
+
 ## [1.12.0](https://github.com/tmdgusya/roach-pi/compare/v1.11.0...v1.12.0) (2026-04-28)
 
 ### Features
