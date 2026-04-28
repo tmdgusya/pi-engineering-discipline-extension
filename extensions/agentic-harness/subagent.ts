@@ -2,7 +2,7 @@
 import { execFile, spawn } from "child_process";
 import { appendFile, mkdir, open, readFile, writeFile, unlink } from "fs/promises";
 import { tmpdir } from "os";
-import { join, basename, dirname, relative } from "path";
+import { join, basename, dirname, relative, extname } from "path";
 import { randomBytes } from "crypto";
 import { existsSync } from "fs";
 import type { AgentConfig, SubagentContextMode } from "./agents.js";
@@ -223,6 +223,7 @@ export interface RunLifecycleEvent {
   paneId?: string;
   attachCommand?: string;
   logFile?: string;
+  eventLogFile?: string;
   tmuxBinary?: string;
   sessionAttempt?: string;
 }
@@ -252,6 +253,7 @@ export interface RunAgentOptions {
     windowName: string;
     paneId: string;
     logFile: string;
+    eventLogFile?: string;
     attachCommand: string;
     tmuxBinary?: string;
     sessionAttempt?: string;
@@ -282,6 +284,7 @@ export function buildTmuxShellCommand(params: {
   args: string[];
   cwd: string;
   env: Record<string, string | undefined>;
+  appendExitMarker?: boolean;
 }): string {
   const envArgs = Object.entries(params.env)
     .filter((entry): entry is [string, string] => entry[1] !== undefined)
@@ -296,6 +299,7 @@ export function buildTmuxLaunchScript(params: {
   args: string[];
   cwd: string;
   env: Record<string, string | undefined>;
+  appendExitMarker?: boolean;
 }): string {
   const envArgs = Object.entries(params.env)
     .filter((entry): entry is [string, string] => entry[1] !== undefined)
