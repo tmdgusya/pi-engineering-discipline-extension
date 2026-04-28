@@ -16,6 +16,7 @@ import {
   createDefaultTeamTasks,
   formatTeamRunSummary,
   runTeam,
+  cleanupActiveTeamTmuxResources,
   resolveTeamWorktreePolicy,
   synthesizeTeamRun,
   validateTeamTasks,
@@ -230,6 +231,75 @@ describe("runTeam", () => {
     expect(finalRecord.events.at(-1).type).toBe("run_failed");
   });
 
+  it("cleans up partial detached tmux session when pane setup partially fails", async () => {
+    tmuxMock.detectTmux.mockResolvedValue({ available: true, binary: "/usr/bin/tmux" });
+    tmuxMock.createWorkerPanes.mockRejectedValue(Object.assign(new Error("pane setup failed"), {
+      partialPanes: [
+        {
+          sessionName: "pi-partial-detached",
+          windowName: "workers",
+          paneId: "%31",
+          attachCommand: "tmux attach -t pi-partial-detached",
+          logFile: "/tmp/partial-detached/task-1.log",
+          eventLogFile: "/tmp/partial-detached/task-1.events.jsonl",
+          placement: "detached-session",
+        },
+      ],
+    }));
+    const runTask = vi.fn(async () => fakeResult("worker", "prompt", "should not run"));
+
+    const summary = await runTeam(
+      { goal: "Clean partial detached setup", workerCount: 2, agent: "worker", runId: "partial-detached" },
+      { runTask },
+    );
+
+    expect(summary.success).toBe(false);
+    expect(summary.tasks.map((task) => task.status)).toEqual(["failed", "failed"]);
+    expect(runTask).not.toHaveBeenCalled();
+    expect(tmuxMock.killTmuxSession).toHaveBeenCalledWith("pi-partial-detached", undefined, "/usr/bin/tmux");
+    expect(tmuxMock.killTmuxPane).not.toHaveBeenCalled();
+  });
+
+  it("cleans up partial current-window tmux panes when pane setup partially fails", async () => {
+    tmuxMock.detectTmux.mockResolvedValue({ available: true, binary: "/usr/bin/tmux" });
+    tmuxMock.createWorkerPanes.mockRejectedValue(Object.assign(new Error("pane setup failed"), {
+      partialPanes: [
+        {
+          sessionName: "dev-session",
+          windowName: "main",
+          paneId: "%41",
+          attachCommand: "tmux attach -t dev-session",
+          logFile: "/tmp/partial-current/task-1.log",
+          eventLogFile: "/tmp/partial-current/task-1.events.jsonl",
+          placement: "current-window",
+        },
+        {
+          sessionName: "dev-session",
+          windowName: "main",
+          paneId: "%42",
+          attachCommand: "tmux attach -t dev-session",
+          logFile: "/tmp/partial-current/task-2.log",
+          eventLogFile: "/tmp/partial-current/task-2.events.jsonl",
+          placement: "current-window",
+        },
+      ],
+    }));
+    const runTask = vi.fn(async () => fakeResult("worker", "prompt", "should not run"));
+
+    const summary = await runTeam(
+      { goal: "Clean partial current-window setup", workerCount: 2, agent: "worker", runId: "partial-current" },
+      { runTask },
+    );
+
+    expect(summary.success).toBe(false);
+    expect(summary.tasks.map((task) => task.status)).toEqual(["failed", "failed"]);
+    expect(runTask).not.toHaveBeenCalled();
+    expect(tmuxMock.killTmuxPane).toHaveBeenCalledTimes(2);
+    expect(tmuxMock.killTmuxPane).toHaveBeenNthCalledWith(1, "%41", undefined, "/usr/bin/tmux");
+    expect(tmuxMock.killTmuxPane).toHaveBeenNthCalledWith(2, "%42", undefined, "/usr/bin/tmux");
+    expect(tmuxMock.killTmuxSession).not.toHaveBeenCalled();
+  });
+
   it("falls back to native when tmux is unavailable in auto mode", async () => {
     tmuxMock.detectTmux.mockResolvedValue({ available: false });
 
@@ -338,6 +408,166 @@ describe("runTeam", () => {
     expect(tmuxMock.killTmuxPane).toHaveBeenNthCalledWith(2, "%12", undefined, "/usr/bin/tmux");
     expect(tmuxMock.killTmuxSession).not.toHaveBeenCalled();
   });
+
+  it("cleans active detached tmux team resources when session shutdown cleanup runs", async () => {
+    tmuxMock.detectTmux.mockResolvedValue({ available: true, binary: "/usr/bin/tmux" });
+    tmuxMock.createWorkerPanes.mockResolvedValue([
+      {
+        sessionName: "pi-team-shutdown-detached",
+        windowName: "workers",
+        paneId: "%31",
+        attachCommand: "tmux attach -t pi-team-shutdown-detached",
+        logFile: "/tmp/shutdown-detached/task-1.log",
+        eventLogFile: "/tmp/shutdown-detached/task-1.events.jsonl",
+      },
+      {
+        sessionName: "pi-team-shutdown-detached",
+        windowName: "workers",
+        paneId: "%32",
+        attachCommand: "tmux attach -t pi-team-shutdown-detached",
+        logFile: "/tmp/shutdown-detached/task-2.log",
+        eventLogFile: "/tmp/shutdown-detached/task-2.events.jsonl",
+      },
+    ]);
+    let started = 0;
+    let resolveStarted!: () => void;
+    const startedPromise = new Promise<void>((resolve) => { resolveStarted = resolve; });
+
+    void runTeam(
+      { goal: "Shutdown detached tmux workers", workerCount: 2, agent: "worker", runId: "shutdown-detached", heartbeatMs: 0 },
+      {
+        runTask: async () => {
+          started += 1;
+          if (started === 2) resolveStarted();
+          return new Promise<SingleResult>(() => undefined);
+        },
+      },
+    );
+
+    await startedPromise;
+    await cleanupActiveTeamTmuxResources();
+
+    expect(tmuxMock.killTmuxSession).toHaveBeenCalledWith("pi-team-shutdown-detached", undefined, "/usr/bin/tmux");
+    expect(tmuxMock.killTmuxPane).not.toHaveBeenCalled();
+  }, 250);
+
+  it("cleans active current-window tmux team panes when session shutdown cleanup runs", async () => {
+    tmuxMock.detectTmux.mockResolvedValue({ available: true, binary: "/usr/bin/tmux" });
+    tmuxMock.createWorkerPanes.mockResolvedValue([
+      {
+        sessionName: "dev-session",
+        windowName: "main",
+        paneId: "%41",
+        attachCommand: "tmux attach -t dev-session",
+        logFile: "/tmp/shutdown-current/task-1.log",
+        eventLogFile: "/tmp/shutdown-current/task-1.events.jsonl",
+        placement: "current-window",
+      },
+      {
+        sessionName: "dev-session",
+        windowName: "main",
+        paneId: "%42",
+        attachCommand: "tmux attach -t dev-session",
+        logFile: "/tmp/shutdown-current/task-2.log",
+        eventLogFile: "/tmp/shutdown-current/task-2.events.jsonl",
+        placement: "current-window",
+      },
+    ]);
+    let started = 0;
+    let resolveStarted!: () => void;
+    const startedPromise = new Promise<void>((resolve) => { resolveStarted = resolve; });
+
+    void runTeam(
+      { goal: "Shutdown current tmux workers", workerCount: 2, agent: "worker", runId: "shutdown-current", heartbeatMs: 0 },
+      {
+        runTask: async () => {
+          started += 1;
+          if (started === 2) resolveStarted();
+          return new Promise<SingleResult>(() => undefined);
+        },
+      },
+    );
+
+    await startedPromise;
+    await cleanupActiveTeamTmuxResources();
+
+    expect(tmuxMock.killTmuxPane).toHaveBeenCalledTimes(2);
+    expect(tmuxMock.killTmuxPane).toHaveBeenNthCalledWith(1, "%41", undefined, "/usr/bin/tmux");
+    expect(tmuxMock.killTmuxPane).toHaveBeenNthCalledWith(2, "%42", undefined, "/usr/bin/tmux");
+    expect(tmuxMock.killTmuxSession).not.toHaveBeenCalled();
+  }, 250);
+
+  it("returns interrupted summary and kills detached tmux session when aborted", async () => {
+    tmuxMock.detectTmux.mockResolvedValue({ available: true, binary: "/usr/bin/tmux" });
+    tmuxMock.createWorkerPanes.mockResolvedValue(Array.from({ length: 12 }, (_, index) => ({
+      sessionName: "pi-team-aborted-detached",
+      windowName: "workers",
+      paneId: `%${index + 1}`,
+      attachCommand: "tmux attach -t pi-team-aborted-detached",
+      logFile: `/tmp/aborted-detached/task-${index + 1}.log`,
+      eventLogFile: `/tmp/aborted-detached/task-${index + 1}.events.jsonl`,
+    })));
+    const controller = new AbortController();
+
+    const summary = await runTeam(
+      { goal: "Abort detached tmux workers", workerCount: 12, agent: "worker", runId: "aborted-detached", signal: controller.signal, heartbeatMs: 0 },
+      {
+        runTask: async () => {
+          controller.abort(new Error("user aborted team run"));
+          return new Promise<SingleResult>(() => undefined);
+        },
+      },
+    );
+
+    expect(summary.success).toBe(false);
+    expect(summary.tasks.map((task) => task.status)).toEqual(Array.from({ length: 12 }, () => "interrupted"));
+    expect(summary.tasks.every((task) => /abort/i.test(task.errorMessage || ""))).toBe(true);
+    expect(tmuxMock.killTmuxSession).toHaveBeenCalledWith("pi-team-aborted-detached", undefined, "/usr/bin/tmux");
+    expect(tmuxMock.killTmuxPane).not.toHaveBeenCalled();
+  }, 250);
+
+  it("returns interrupted summary and kills current-window tmux panes when aborted", async () => {
+    tmuxMock.detectTmux.mockResolvedValue({ available: true, binary: "/usr/bin/tmux" });
+    tmuxMock.createWorkerPanes.mockResolvedValue([
+      {
+        sessionName: "dev-session",
+        windowName: "main",
+        paneId: "%21",
+        attachCommand: "tmux attach -t dev-session",
+        logFile: "/tmp/aborted-current/task-1.log",
+        eventLogFile: "/tmp/aborted-current/task-1.events.jsonl",
+        placement: "current-window",
+      },
+      {
+        sessionName: "dev-session",
+        windowName: "main",
+        paneId: "%22",
+        attachCommand: "tmux attach -t dev-session",
+        logFile: "/tmp/aborted-current/task-2.log",
+        eventLogFile: "/tmp/aborted-current/task-2.events.jsonl",
+        placement: "current-window",
+      },
+    ]);
+    const controller = new AbortController();
+
+    const summary = await runTeam(
+      { goal: "Abort current-window tmux workers", workerCount: 2, agent: "worker", runId: "aborted-current", signal: controller.signal, heartbeatMs: 0 },
+      {
+        runTask: async () => {
+          controller.abort(new Error("user aborted team run"));
+          return new Promise<SingleResult>(() => undefined);
+        },
+      },
+    );
+
+    expect(summary.success).toBe(false);
+    expect(summary.tasks.map((task) => task.status)).toEqual(["interrupted", "interrupted"]);
+    expect(summary.tasks.every((task) => /abort/i.test(task.errorMessage || ""))).toBe(true);
+    expect(tmuxMock.killTmuxPane).toHaveBeenCalledTimes(2);
+    expect(tmuxMock.killTmuxPane).toHaveBeenNthCalledWith(1, "%21", undefined, "/usr/bin/tmux");
+    expect(tmuxMock.killTmuxPane).toHaveBeenNthCalledWith(2, "%22", undefined, "/usr/bin/tmux");
+    expect(tmuxMock.killTmuxSession).not.toHaveBeenCalled();
+  }, 250);
 
   it("emits backend resolved with native fallback and never fires tmux ready when tmux is missing", async () => {
     tmuxMock.detectTmux.mockResolvedValue({ available: false });

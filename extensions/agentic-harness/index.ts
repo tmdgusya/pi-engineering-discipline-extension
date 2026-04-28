@@ -6,7 +6,7 @@ import { RoachFooter, type CacheStats, type ActiveTools } from "./footer.js";
 import { homedir } from "os";
 import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
-import { discoverAgents } from "./agents.js";
+import { discoverAgents, type SubagentContextMode } from "./agents.js";
 import { runAgent, mapWithConcurrencyLimit, MAX_CONCURRENCY, MAX_PARALLEL_TASKS, resolveDepthConfig, getCycleViolations } from "./subagent.js";
 import { emptyUsage, isResultError, isResultSuccess, getResultSummaryText, type SingleResult, type SubagentDetails } from "./types.js";
 import { renderCall, renderResult } from "./render.js";
@@ -18,8 +18,8 @@ import { convertToLlm, serializeConversation } from "@mariozechner/pi-coding-age
 import { complete } from "@mariozechner/pi-ai";
 import { isDisciplineAgent, augmentAgentWithKarpathy, getSlopCleanerTask } from "./discipline.js";
 import { fetchUrlToMarkdown } from "./webfetch/utils.js";
-import { PI_TEAM_WORKER_ENV, formatTeamRunSummary, runTeam, type TeamRunSummary } from "./team.js";
-import { defaultTeamRunStateRoot, listTeamRuns, readTeamRunRecord, writeTeamRunRecord } from "./team-state.js";
+import { PI_TEAM_WORKER_ENV, cleanupActiveTeamTmuxResources, formatTeamRunSummary, runTeam, type TeamBackend, type TeamRunSummary } from "./team.js";
+import { defaultTeamRunStateRoot, listTeamRuns, readTeamRunRecord, writeTeamRunRecord, type StaleTaskResumeMode } from "./team-state.js";
 import { buildTeamCommandPrompt, getTeamArgumentCompletions, isTeamFollowUpCommand, parseTeamArgs } from "./team-command.js";
 import { renderWebfetchCall, renderWebfetchResult } from "./webfetch/render.js";
 import { getDefaultApprovalStore } from "./sandbox/approval-store.js";
@@ -239,6 +239,46 @@ export default function (pi: ExtensionAPI) {
     planTaskId: Type.Optional(Type.Number({ description: "Task number in the plan file to validate (e.g. 1 for Task 1). Required when agent is plan-validator." })),
   });
 
+  type AgentScope = "user" | "project" | "both";
+  type TeamToolParams = {
+    goal?: string;
+    workerCount?: number;
+    agent?: string;
+    agentScope?: AgentScope;
+    worktree?: boolean;
+    worktreePolicy?: "off" | "on" | "auto";
+    backend?: TeamBackend;
+    maxOutput?: number;
+    runId?: string;
+    resumeRunId?: string;
+    resumeMode?: StaleTaskResumeMode;
+    staleTaskMs?: number;
+    commandTarget?: string;
+    commandMessage?: string;
+  };
+  type SubagentTaskParam = {
+    agent: string;
+    task: string;
+    cwd?: string;
+    output?: string;
+    reads?: string[];
+    progress?: string;
+  };
+  type SubagentToolParams = {
+    agent?: string;
+    task?: string;
+    tasks?: SubagentTaskParam[];
+    chain?: SubagentTaskParam[];
+    agentScope?: AgentScope;
+    cwd?: string;
+    maxOutput?: number;
+    output?: string;
+    reads?: string[];
+    progress?: string;
+    context?: SubagentContextMode;
+    worktree?: boolean;
+  };
+
   const makeDetails = (mode: "single" | "parallel") => (results: SingleResult[]): SubagentDetails => ({ mode, results });
 
   const TeamParams = Type.Object({
@@ -283,7 +323,7 @@ export default function (pi: ExtensionAPI) {
       renderCall: (args, theme) => renderCall(args, theme),
       renderResult: (result, { expanded }, theme) => renderResult(result, expanded, theme),
       execute: async (_toolCallId, params, signal, onUpdate, ctx) => {
-        const { goal, workerCount, agent, agentScope, worktree, worktreePolicy, backend, maxOutput, runId, resumeRunId, resumeMode, staleTaskMs, commandTarget, commandMessage } = params;
+        const { goal, workerCount, agent, agentScope, worktree, worktreePolicy, backend, maxOutput, runId, resumeRunId, resumeMode, staleTaskMs, commandTarget, commandMessage } = params as TeamToolParams;
         const defaultCwd = ctx.cwd;
         const teamRunStateRoot = defaultTeamRunStateRoot(defaultCwd);
         const hasUI = (ctx as any).hasUI !== false && !!ctx?.ui?.select;
@@ -318,7 +358,7 @@ export default function (pi: ExtensionAPI) {
         if (indicatorSupported) ctx.ui.setWorkingIndicator({ frames: [] });
         let summary: TeamRunSummary;
         try {
-          summary = await runTeam({ goal, workerCount, agent, worktree, worktreePolicy, backend, maxOutput, runId, resumeRunId, resumeMode, staleTaskMs, commandTarget, commandMessage }, {
+          summary = await runTeam({ goal, workerCount, agent, worktree, worktreePolicy, backend, maxOutput, runId, resumeRunId, resumeMode, staleTaskMs, commandTarget, commandMessage, signal }, {
           findAgent,
           summarizeResult: getResultSummaryText,
           persistRun: async (record) => {
@@ -426,7 +466,7 @@ export default function (pi: ExtensionAPI) {
       renderResult: (result, { expanded }, theme) => renderResult(result, expanded, theme),
 
       execute: async (toolCallId, params, signal, onUpdate, ctx) => {
-        const { agent, task, tasks, chain, agentScope, cwd, maxOutput, output, reads, progress, context, worktree } = params;
+        const { agent, task, tasks, chain, agentScope, cwd, maxOutput, output, reads, progress, context, worktree } = params as SubagentToolParams;
         const hasUI = (ctx as any).hasUI !== false && !!ctx?.ui?.select;
         if (parsedApprovalMode.invalidRawValue && !warnedInvalidApprovalMode) {
           warnedInvalidApprovalMode = true;
@@ -771,6 +811,10 @@ export default function (pi: ExtensionAPI) {
         };
       }
     },
+  });
+
+  pi.on("session_shutdown", async (_event, _ctx) => {
+    await cleanupActiveTeamTmuxResources();
   });
 
   pi.on("resources_discover", async (_event, _ctx) => {

@@ -26,6 +26,7 @@ vi.mock("@mariozechner/pi-ai", () => ({
 
 const teamMock = vi.hoisted(() => ({
   runTeam: vi.fn(),
+  cleanupActiveTeamTmuxResources: vi.fn(async () => undefined),
   formatTeamRunSummary: vi.fn((s: TeamRunSummary) => `synthesis:${s.success ? "ok" : "fail"}`),
   PI_TEAM_WORKER_ENV: "PI_TEAM_WORKER",
 }));
@@ -43,6 +44,7 @@ beforeEach(() => {
   delete process.env.PI_SUBAGENT_DEPTH;
   delete process.env.PI_TEAM_WORKER;
   teamMock.runTeam.mockReset();
+  teamMock.cleanupActiveTeamTmuxResources.mockClear();
 });
 
 afterEach(() => {
@@ -65,7 +67,7 @@ function createMockPi() {
     },
     sendUserMessage: vi.fn(),
   };
-  return { mockPi, tools, commands };
+  return { mockPi, tools, commands, events };
 }
 
 function makeSummary(overrides: Partial<TeamRunSummary> = {}): TeamRunSummary {
@@ -103,6 +105,18 @@ function makeCtx() {
 }
 
 describe("team tool wrapper", () => {
+  it("cleans active team tmux resources on session shutdown", async () => {
+    const { mockPi, events } = createMockPi();
+    extension(mockPi);
+
+    const handlers = events.get("session_shutdown") ?? [];
+    expect(handlers.length).toBeGreaterThan(0);
+
+    await handlers.at(-1)!({ type: "session_shutdown", reason: "quit" }, {});
+
+    expect(teamMock.cleanupActiveTeamTmuxResources).toHaveBeenCalledTimes(1);
+  });
+
   it("returns terminate:true when runTeam succeeds", async () => {
     teamMock.runTeam.mockResolvedValueOnce(makeSummary({ success: true }));
     const { mockPi, tools } = createMockPi();
@@ -123,6 +137,20 @@ describe("team tool wrapper", () => {
     const result = await tool.execute("call-2", { goal: "x" }, undefined, undefined, ctx);
     expect(result.isError).toBe(true);
     expect(result.terminate).toBe(false);
+  });
+
+  it("passes the tool AbortSignal to runTeam", async () => {
+    teamMock.runTeam.mockResolvedValueOnce(makeSummary({ success: true }));
+    const { mockPi, tools } = createMockPi();
+    extension(mockPi);
+    const tool = tools.get("team");
+    const ctx = makeCtx();
+    const controller = new AbortController();
+    await tool.execute("call-signal", { goal: "x" }, controller.signal, undefined, ctx);
+    expect(teamMock.runTeam).toHaveBeenCalledWith(
+      expect.objectContaining({ signal: controller.signal }),
+      expect.anything(),
+    );
   });
 
   it("hides the working indicator before runTeam and restores on finally", async () => {

@@ -16,6 +16,7 @@ import { getDefaultApprovalStore } from "./sandbox/approval-store.js";
 import { resolveSandboxLaunch } from "./sandbox/executor.js";
 import type { SandboxRuntimeOptions } from "./sandbox/types.js";
 import { shellQuote } from "./shell.js";
+import { killTmuxPane } from "./tmux.js";
 
 export const MAX_PARALLEL_TASKS = 12;
 export const MAX_CONCURRENCY = 10;
@@ -692,6 +693,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         let settled = false;
         let pollTimer: ReturnType<typeof setTimeout> | undefined;
         let graceTimer: ReturnType<typeof setTimeout> | undefined;
+        let tmuxKillTimer: ReturnType<typeof setTimeout> | undefined;
         let abortHandler: (() => void) | undefined;
         let terminationStarted = false;
 
@@ -700,6 +702,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
           settled = true;
           if (pollTimer) clearTimeout(pollTimer);
           if (graceTimer) clearTimeout(graceTimer);
+          if (tmuxKillTimer) clearTimeout(tmuxKillTimer);
           if (signal && abortHandler) signal.removeEventListener("abort", abortHandler);
           emitLifecycle({
             phase: "closed",
@@ -742,6 +745,23 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
             });
           }
           void execFileAsync(tmuxBinary, ["send-keys", "-t", tmuxPane.paneId, "C-c"]).catch(() => undefined);
+          if (!tmuxKillTimer) {
+            tmuxKillTimer = setTimeout(() => {
+              emitLifecycle({
+                phase: "terminating",
+                runId: resolvedOwnership.runId,
+                parentRunId: resolvedOwnership.parentRunId,
+                rootRunId: resolvedOwnership.rootRunId,
+                owner: resolvedOwnership.owner,
+                pid: 0,
+                reason,
+                signal: "SIGKILL",
+                ...tmuxLifecycleMetadata,
+              });
+              void killTmuxPane(tmuxPane.paneId, undefined, tmuxPane.tmuxBinary);
+            }, KILL_TIMEOUT_MS);
+            tmuxKillTimer.unref?.();
+          }
         };
 
         const flushLine = (line: string) => {
@@ -801,12 +821,10 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
             semanticTerminationRequested = true;
             closeSignal = "SIGTERM";
             sendPaneSignal("abort_signal_received");
-            finish(143);
           } else {
             wasAborted = true;
             closeSignal = "SIGTERM";
             sendPaneSignal("abort_signal_received");
-            finish(130);
           }
         };
         if (signal?.aborted) abortHandler();

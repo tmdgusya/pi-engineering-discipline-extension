@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, dirname } from "path";
@@ -39,6 +39,7 @@ function loadState(path: string): any {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   process.argv = [...originalArgv];
   for (const pid of trackedPids) {
     try {
@@ -54,6 +55,80 @@ afterEach(() => {
 });
 
 describe.runIf(process.platform !== "win32")("runAgent process ownership", () => {
+  it("escalates aborted tmux panes from C-c to kill-pane", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "subagent-process-tmux-abort-"));
+    tempDirs.push(tempDir);
+    const fakeTmux = join(tempDir, "tmux");
+    const logFile = join(tempDir, "pane.log");
+    const callsFile = join(tempDir, "calls.log");
+    const runnerScript = join(tempDir, "runner.mjs");
+    writeFileSync(runnerScript, "console.log('not executed');\n");
+    writeFileSync(fakeTmux, [
+      `#!${process.execPath}`,
+      "const { appendFileSync } = require('fs');",
+      "const args = process.argv.slice(2);",
+      `appendFileSync(${JSON.stringify(callsFile)}, args.join(' ') + '\\n');`,
+      "if (args[0] === 'kill-pane') {",
+      `  appendFileSync(${JSON.stringify(logFile)}, '__PI_TMUX_EXIT:130\\n');`,
+      "}",
+      "process.exit(0);",
+    ].join("\n"));
+    chmodSync(fakeTmux, 0o755);
+
+    process.argv = [process.execPath, runnerScript];
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${tempDir}:${originalPath || ""}`;
+    const controller = new AbortController();
+    try {
+      const runPromise = runAgent({
+        agent: {
+          name: "fixture",
+          description: "fixture agent",
+          filePath: runnerScript,
+          source: "project",
+          systemPrompt: "",
+          tools: [],
+        },
+        agentName: "fixture",
+        task: "tmux-abort",
+        cwd: tempDir,
+        depthConfig: resolveDepthConfig(),
+        ownership: { runId: "tmux-abort-run", owner: "test-suite" },
+        executionMode: "tmux",
+        signal: controller.signal,
+        tmuxPane: {
+          sessionName: "pi-team-run-abort",
+          windowName: "workers",
+          paneId: "%1",
+          logFile,
+          attachCommand: "tmux attach -t pi-team-run-abort",
+        },
+        makeDetails: (results) => ({ mode: "single", results }),
+      });
+
+      await waitFor(() => {
+        try {
+          return readFileSync(callsFile, "utf8").includes("send-keys -t %1");
+        } catch {
+          return false;
+        }
+      }, 2000);
+      vi.useFakeTimers();
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.waitFor(() => {
+        const tmuxCalls = readFileSync(callsFile, "utf8");
+        expect(tmuxCalls).toContain("send-keys -t %1 C-c");
+        expect(tmuxCalls).toContain("kill-pane -t %1");
+      });
+      await vi.advanceTimersByTimeAsync(25);
+      const result = await runPromise;
+      expect(result.exitCode).toBe(130);
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
   it("does not complete from a stale tmux exit marker", async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "subagent-process-tmux-stale-"));
     tempDirs.push(tempDir);

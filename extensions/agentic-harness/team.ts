@@ -72,6 +72,7 @@ export interface TeamRunOptions {
   staleTaskMs?: number;
   heartbeatMs?: number;
   backend?: TeamBackend;
+  signal?: AbortSignal;
   commandTarget?: string;
   commandMessage?: string;
 }
@@ -371,6 +372,38 @@ export function resolveTeamWorktreePolicy(opts: Pick<TeamRunOptions, "worktree" 
   return !!opts.worktree;
 }
 
+interface TeamTmuxCleanupRegistration {
+  backendUsed: ResolvedTeamBackend;
+  attachedToCurrentClient: boolean;
+  paneIds: string[];
+  sessionName?: string;
+  tmuxBinary?: string;
+}
+
+const activeTeamTmuxResources = new Set<TeamTmuxCleanupRegistration>();
+
+async function cleanupTeamTmuxResources(params: TeamTmuxCleanupRegistration): Promise<void> {
+  if (params.backendUsed !== "tmux") return;
+  if (params.attachedToCurrentClient && params.paneIds.length > 0) {
+    await Promise.all(params.paneIds.map((paneId) => killTmuxPane(paneId, undefined, params.tmuxBinary)));
+    return;
+  }
+  if (params.sessionName) {
+    await killTmuxSession(params.sessionName, undefined, params.tmuxBinary);
+  }
+}
+
+async function cleanupRegisteredTeamTmuxResources(registration: TeamTmuxCleanupRegistration | undefined): Promise<void> {
+  if (!registration) return;
+  activeTeamTmuxResources.delete(registration);
+  await cleanupTeamTmuxResources(registration);
+}
+
+export async function cleanupActiveTeamTmuxResources(): Promise<void> {
+  const registrations = Array.from(activeTeamTmuxResources);
+  activeTeamTmuxResources.clear();
+  await Promise.all(registrations.map((registration) => cleanupTeamTmuxResources(registration)));
+}
 
 async function runTeamFollowUpCommand(
   record: TeamRunRecord,
@@ -530,7 +563,6 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
   for (const task of tasks) {
     task.terminal = task.terminal ?? { backend: "native" };
   }
-  const existingResults: SingleResult[] = [];
   try {
     validateTeamTasks(tasks);
   } catch (err) {
@@ -554,6 +586,7 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
   let tmuxSessionName: string | undefined;
   let tmuxPaneIdsToCleanup: string[] = [];
   let tmuxAttachedToCurrentClient = false;
+  let tmuxCleanupRegistration: TeamTmuxCleanupRegistration | undefined;
   if (backendUsed === "tmux" && runnableTasks.length > 0) {
     try {
       const paneRefs = await createWorkerPanes({
@@ -582,10 +615,38 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
           attachedToCurrentClient: tmuxAttachedToCurrentClient,
         });
       }
+      tmuxCleanupRegistration = {
+        backendUsed,
+        attachedToCurrentClient: tmuxAttachedToCurrentClient,
+        paneIds: tmuxPaneIdsToCleanup,
+        sessionName: tmuxSessionName,
+        tmuxBinary,
+      };
+      activeTeamTmuxResources.add(tmuxCleanupRegistration);
       await persistIfEnabled(runtime, record);
     } catch (error) {
       const failedAt = now();
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const partialPanes = (error as { partialPanes?: unknown }).partialPanes;
+      let cleanupSessionName = tmuxSessionName;
+      let cleanupPaneIds = tmuxPaneIdsToCleanup;
+      let cleanupAttachedToCurrentClient = tmuxAttachedToCurrentClient;
+      if (Array.isArray(partialPanes)) {
+        const partialSessionName = partialPanes
+          .map((pane) => (pane as { sessionName?: unknown }).sessionName)
+          .find((sessionName): sessionName is string => typeof sessionName === "string");
+        const partialPaneIds = partialPanes
+          .map((pane) => (pane as { paneId?: unknown }).paneId)
+          .filter((paneId): paneId is string => typeof paneId === "string");
+        const partialAttachedToCurrentClient = partialPanes.some((pane) =>
+          (pane as { placement?: unknown }).placement === "current-window",
+        );
+        cleanupSessionName = cleanupSessionName ?? partialSessionName;
+        cleanupPaneIds = cleanupPaneIds.length > 0 ? cleanupPaneIds : partialPaneIds;
+        cleanupAttachedToCurrentClient = cleanupPaneIds.length > 0
+          ? (tmuxPaneIdsToCleanup.length > 0 ? tmuxAttachedToCurrentClient : partialAttachedToCurrentClient)
+          : tmuxAttachedToCurrentClient;
+      }
       for (const task of runnableTasks) {
         task.status = "failed";
         task.updatedAt = failedAt;
@@ -598,7 +659,13 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
       record = recordTeamEvent(record, { type: "run_failed", createdAt: failedAt, message: errorMessage });
       record = setTeamRunStatus(record, "failed", failedAt, summary);
       await persistIfEnabled(runtime, record);
-      if (tmuxSessionName) await killTmuxSession(tmuxSessionName, undefined, tmuxBinary);
+      await cleanupTeamTmuxResources({
+        backendUsed,
+        attachedToCurrentClient: cleanupAttachedToCurrentClient,
+        paneIds: cleanupPaneIds,
+        sessionName: cleanupSessionName,
+        tmuxBinary,
+      });
       return summary;
     }
   } else {
@@ -607,7 +674,41 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
     }
   }
   const runWithWorktree = resolveTeamWorktreePolicy(opts);
-  const results = await mapWithConcurrencyLimit(runnableTasks, MAX_CONCURRENCY, async (task, index) => {
+  const abortSignal = opts.signal;
+  let abortListener: (() => void) | undefined;
+  const abortSummaryPromise = abortSignal ? new Promise<TeamRunSummary>((resolve) => {
+    const handleAbort = () => {
+      void (async () => {
+        const interruptedAt = now();
+        const reason = abortSignal.reason;
+        const errorMessage = reason instanceof Error
+          ? reason.message
+          : typeof reason === "string" ? reason : "Team run aborted";
+        for (const task of tasks) {
+          if (task.status === "pending" || task.status === "in_progress") {
+            task.status = "interrupted";
+            task.updatedAt = interruptedAt;
+            task.completedAt = interruptedAt;
+            task.errorMessage = errorMessage;
+            record = recordTeamEvent(record, { type: "task_interrupted", taskId: task.id, createdAt: interruptedAt, message: errorMessage });
+          }
+        }
+        await cleanupRegisteredTeamTmuxResources(tmuxCleanupRegistration);
+        const summary = synthesizeTeamRun(record.goal, tasks, [], opts.maxOutput, backendRequested, backendUsed);
+        record = recordTeamEvent(record, { type: "run_failed", createdAt: interruptedAt, message: errorMessage });
+        record = setTeamRunStatus(record, "interrupted", interruptedAt, summary);
+        await persistIfEnabled(runtime, record);
+        resolve(summary);
+      })();
+    };
+    abortListener = handleAbort;
+    if (abortSignal.aborted) {
+      handleAbort();
+    } else {
+      abortSignal.addEventListener("abort", handleAbort, { once: true });
+    }
+  }) : undefined;
+  const workerResultsPromise = mapWithConcurrencyLimit(runnableTasks, MAX_CONCURRENCY, async (task, index) => {
     const startedAt = now();
     task.status = "in_progress";
     task.startedAt = task.startedAt || startedAt;
@@ -701,18 +802,29 @@ export async function runTeam(opts: TeamRunOptions, runtime: TeamRuntime): Promi
     return result;
   });
 
-  const summary = synthesizeTeamRun(record.goal, tasks, [...existingResults, ...results], opts.maxOutput, backendRequested, backendUsed);
+  let results: SingleResult[];
+  if (abortSummaryPromise) {
+    const outcome = await Promise.race([
+      workerResultsPromise.then((workerResults) => ({ type: "completed" as const, workerResults })),
+      abortSummaryPromise.then((summary) => ({ type: "aborted" as const, summary })),
+    ]);
+    if (outcome.type === "aborted") {
+      return outcome.summary;
+    }
+    if (abortListener) abortSignal?.removeEventListener("abort", abortListener);
+    results = outcome.workerResults;
+  } else {
+    results = await workerResultsPromise;
+  }
+
+  const summary = synthesizeTeamRun(record.goal, tasks, results, opts.maxOutput, backendRequested, backendUsed);
   const finalStatus = summary.success
     ? "completed"
     : tasks.some((task) => task.status === "interrupted" || task.status === "in_progress")
       ? "interrupted"
       : "failed";
-  if (backendUsed === "tmux" && summary.success) {
-    if (tmuxAttachedToCurrentClient && tmuxPaneIdsToCleanup.length > 0) {
-      await Promise.all(tmuxPaneIdsToCleanup.map((paneId) => killTmuxPane(paneId, undefined, tmuxBinary)));
-    } else if (tmuxSessionName) {
-      await killTmuxSession(tmuxSessionName, undefined, tmuxBinary);
-    }
+  if (summary.success) {
+    await cleanupRegisteredTeamTmuxResources(tmuxCleanupRegistration);
   }
   record = recordTeamEvent(record, { type: summary.success ? "run_completed" : "run_failed", createdAt: now() });
   record = setTeamRunStatus(record, finalStatus, now(), summary);
