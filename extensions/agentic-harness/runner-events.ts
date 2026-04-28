@@ -142,6 +142,40 @@ function processPiEvent(event: any, result: SingleResult): boolean {
   }
 }
 
+
+function extractAssistantText(message: any): string[] {
+  if (!message || message.role !== "assistant" || !Array.isArray(message.content)) return [];
+  return message.content
+    .filter((part: any) => part?.type === "text" && typeof part.text === "string" && part.text.trim())
+    .map((part: any) => part.text.trimEnd());
+}
+
+function renderPiEventForPane(event: any): string[] {
+  if (!event || typeof event !== "object") return [];
+  switch (event.type) {
+    case "message_end":
+    case "turn_end":
+      return extractAssistantText(event.message);
+    case "agent_end":
+      return ["✓ worker completed"];
+    default:
+      return [];
+  }
+}
+
+/**
+ * Render one pi JSON-mode stdout line into human-readable pane output.
+ * Valid structured events are compacted; non-JSON lines pass through for diagnostics.
+ */
+export function renderPiJsonLineForPane(line: string): string[] {
+  if (!line.trim()) return [];
+  try {
+    return renderPiEventForPane(JSON.parse(line));
+  } catch {
+    return [line];
+  }
+}
+
 /**
  * Parse a single JSON line from pi's stdout and update the result.
  * Returns true if the result changed (for triggering UI updates).

@@ -27,6 +27,7 @@ export interface TeamTerminalMetadata {
   paneId?: string;
   attachCommand?: string;
   logFile?: string;
+  eventLogFile?: string;
   tmuxBinary?: string;
   sessionAttempt?: string;
 }
