@@ -19,7 +19,7 @@ intended as a map for engineers modifying the team feature; it is not a tutorial
 | `extensions/agentic-harness/team-command.ts` | `/team` slash command parsing + prompt builder |
 | `extensions/agentic-harness/tmux.ts` | tmux integration — pane creation, attach commands, cleanup |
 | `extensions/agentic-harness/index.ts` | UI wiring — registers `/team` command and `team` tool, supplies `runTeam` runtime callbacks |
-| `extensions/agentic-harness/subagent.ts` | Worker process execution — `runAgent`, native vs tmux execution mode |
+| `extensions/agentic-harness/subagent.ts` | Worker process execution — `runAgent`, native vs tmux execution mode, tmux stream split between readable pane output and raw machine events |
 
 ---
 
@@ -45,10 +45,14 @@ this document.
 5. **Task `terminal` is set before any worker runs.** Either to
    `{ backend: "native" }` (no tmux) or to a fully-populated `TeamTerminalMetadata`
    (tmux). Workers consume `task.terminal` to decide their `executionMode`.
-6. **Successful runs auto-clean their tmux session; failed runs do not.** Failed
+6. **Tmux display and orchestration streams are separate.** `logFile` remains the
+   human-visible pane log, while `eventLogFile`/`rawEventLogFile` is the optional
+   machine JSONL side-channel that `runAgent` parses when present. Do not point
+   operators at the raw event log as the primary pane experience.
+7. **Successful runs auto-clean their tmux session; failed runs do not.** Failed
    sessions remain attached-able for post-mortem. (`team.ts` cleanup branch
    near the end of `runTeam`.)
-7. **Workers must not orchestrate.** The `WORKER_PROTOCOL` constant
+8. **Workers must not orchestrate.** The `WORKER_PROTOCOL` constant
    (`team.ts:114-121`) and the `PI_TEAM_WORKER` env (`PI_TEAM_WORKER_ENV`)
    together prevent recursive subagent spawning. The `team` tool itself is
    only registered when `isRootSession && !isTeamWorker` (`index.ts:261`).
@@ -108,6 +112,9 @@ TeamRunSummary          // synthesis returned to caller
   paneId?: "%1",
   attachCommand?: "tmux attach -t pi-team-<runId>",
   logFile?: ".pi/agent/runs/<runId>/tmux/task-N.log",
+  eventLogFile?: ".pi/agent/runs/<runId>/tmux/task-N.events.jsonl",
+  // rawEventLogFile is an acceptable alias if code needs a more explicit name.
+  rawEventLogFile?: ".pi/agent/runs/<runId>/tmux/task-N.events.jsonl",
   tmuxBinary?: "/usr/bin/tmux",
   sessionAttempt?: "a1b2c3d4"   // present only on session-name collision retry
 }
@@ -115,7 +122,9 @@ TeamRunSummary          // synthesis returned to caller
 
 This is the contract between orchestrator and worker. `subagent.ts` switches
 `executionMode` based on `terminal.backend` and uses every other field if
-present.
+present. In tmux mode, `logFile` is the operator-facing visible pane log. When
+`eventLogFile`/`rawEventLogFile` is set, `runAgent` must parse that file for raw
+pi JSON events and exit markers instead of scraping the visible log.
 
 ### Session naming
 
@@ -291,11 +300,13 @@ runTeam ──────► createWorkerPanes ──────────�
 per-worker:                                       (still running; no new tmux commands)
   runAgent(executionMode="tmux")
     buildTmuxShellCommand(...)
-    send-keys -t pane%K "<cmd>" Enter ──────────►   pane %K runs the worker process,
-                                                     stdout/stderr → pipe-pane log
-    poll log file for output ◄────────────────────  log grows
-    parse pi JSON events from log lines
-    detect TMUX_EXIT_MARKER → resolve exit code
+    send-keys -t pane%K "<cmd>" Enter ──────────►   pane %K runs the worker wrapper,
+                                                     raw stdout → task-K.events.jsonl
+                                                     rendered text → pipe-pane log
+                                                     stderr/non-JSON → readable pane output
+    poll event log for output ◄───────────────────  event log grows
+    parse pi JSON events from event log lines
+    detect TMUX_EXIT_MARKER in event log → resolve exit code
 
 cleanup (success only):
   killTmuxSession ─────────────────────────────►   session destroyed, panes gone
@@ -319,8 +330,10 @@ terminal app is also out of scope (see plan in `/tasks` history).
 .pi/agent/runs/<runId>/
   team-run.json         ← TeamRunRecord, rewritten after each event
   tmux/
-    task-1.log          ← raw pane output (pipe-pane), survives session kill
+    task-1.log          ← readable visible pane output (pipe-pane), survives session kill
+    task-1.events.jsonl ← raw pi JSON events + tmux exit marker for orchestration
     task-2.log
+    task-2.events.jsonl
     ...
 ```
 

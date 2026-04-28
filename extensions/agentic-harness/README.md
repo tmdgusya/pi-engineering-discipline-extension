@@ -99,6 +99,8 @@ Parameters:
 - `backend: "native"` uses the existing JSON subprocess backend without tmux.
 - `backend: "tmux"` requires tmux and records attach metadata for each worker pane.
 - When `team` runs inside an existing tmux client, worker panes open automatically in the current tmux window; otherwise attach to a detached tmux-backed run with `tmux attach -t <session>`.
+- Tmux worker panes are intended to be human-readable: standard pi JSON events are rendered into concise worker conversation/progress text in the visible pane and `task-N.log` pane log.
+- Raw machine-readable pi JSON events are kept separately in a per-task event log such as `task-N.events.jsonl`; the orchestrator uses that event log for completion/result parsing when it is present.
 - Failed tmux team runs intentionally leave tmux panes/sessions alive for debugging. Detached runs can be inspected with `tmux ls` and cleaned up with `tmux kill-session -t <session>`.
 - If a tmux session collision occurs, retry sessions may use a suffixed session name; the actual attach command is recorded in the run summary and persisted state.
 - The tmux backend runs the resolved sandbox command inside a tmux pane. Treat sandbox parity as tested for wrapper invocation, not as pane embedding isolation.
@@ -130,7 +132,17 @@ npm test
 npm run build
 ```
 
-There is currently no `lint` script in `extensions/agentic-harness/package.json`; use the test/build gate plus manual docs review unless a lint script is added later. The test suite should cover task creation, worker prompt guardrails, worker-count clamping, success/failure synthesis, runtime suppression under `PI_TEAM_WORKER=1`, root tool registration, and the fake-runner e2e path. The build must pass with `tsc --noEmit`.
+There is currently no `lint` script in `extensions/agentic-harness/package.json`; use the test/build gate plus manual docs review unless a lint script is added later. The test suite should cover task creation, worker prompt guardrails, worker-count clamping, success/failure synthesis, runtime suppression under `PI_TEAM_WORKER=1`, root tool registration, fake-runner e2e coverage, and tmux split-stream behavior where visible pane logs stay readable while raw event logs remain machine-parseable. The build must pass with `tsc --noEmit`.
+
+### Tmux worker log troubleshooting
+
+For tmux-backed team runs, inspect logs in this order:
+
+1. **Visible pane / `task-N.log`** — start here for operator-facing context. It should show readable worker progress and final assistant text rather than raw `{"type":"message_end"...}` event envelopes.
+2. **Raw event log / `task-N.events.jsonl`** — use this second when debugging orchestration, completion detection, or final synthesis. It contains the raw JSON events and tmux exit marker that the harness parses.
+3. **Persisted team run / `team-run.json`** — use this for task lifecycle state, terminal metadata, artifact refs, and the final synthesized summary.
+
+If a worker fails, the tmux session is intentionally preserved so the pane, visible log, and raw event log can be compared before cleanup.
 
 ## Development
 
