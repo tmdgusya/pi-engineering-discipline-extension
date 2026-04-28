@@ -604,6 +604,8 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
     let exitCode: number;
     if (executionMode === "tmux") {
       if (!tmuxPane) throw new Error('executionMode:"tmux" requires tmuxPane metadata.');
+      const eventLogFile = tmuxPane.eventLogFile ?? defaultTmuxEventLogFile(tmuxPane.logFile);
+      if (result.terminal?.backend === "tmux") result.terminal.eventLogFile = eventLogFile;
       const tmuxLifecycleMetadata = {
         backend: "tmux" as const,
         sessionName: tmuxPane.sessionName,
@@ -611,11 +613,14 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         paneId: tmuxPane.paneId,
         attachCommand: tmuxPane.attachCommand,
         logFile: tmuxPane.logFile,
+        eventLogFile,
         tmuxBinary: tmuxPane.tmuxBinary,
         sessionAttempt: tmuxPane.sessionAttempt,
       };
       await mkdir(dirname(tmuxPane.logFile), { recursive: true });
       await writeFile(tmuxPane.logFile, "", "utf-8");
+      await mkdir(dirname(eventLogFile), { recursive: true });
+      await writeFile(eventLogFile, "", "utf-8");
       const tmuxLaunchScript = join(
         dirname(tmuxPane.logFile),
         `.pi-tmux-launch-${resolvedOwnership.runId}-${randomBytes(8).toString("hex")}.sh`,
@@ -627,6 +632,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
           args: resolvedSandbox.args,
           cwd: runCwd,
           env: resolvedSandbox.env,
+          eventLogFile,
         }),
         { encoding: "utf-8", mode: 0o700 },
       );
@@ -635,6 +641,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         args: [tmuxLaunchScript],
         cwd: runCwd,
         env: {},
+        appendExitMarker: false,
       });
       const tmuxBinary = tmuxPane.tmuxBinary ?? "tmux";
       try {
@@ -719,7 +726,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         const poll = async () => {
           if (settled) return;
           try {
-            const handle = await open(tmuxPane.logFile, "r");
+            const handle = await open(eventLogFile, "r");
             try {
               const stats = await handle.stat();
               if (stats.size > readOffset) {
