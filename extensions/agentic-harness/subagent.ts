@@ -675,6 +675,7 @@ export async function runAgent(opts: RunAgentOptions): Promise<SingleResult> {
         `${basename(tmuxPane.logFile).replace(/\.[^.]+$/, "") || "pane"}.events.jsonl`,
       );
       tmuxLifecycleMetadata.eventLogFile = tmuxEventLogFile;
+      if (result.terminal?.backend === "tmux") result.terminal.eventLogFile = tmuxEventLogFile;
       await mkdir(dirname(tmuxPane.logFile), { recursive: true });
       await mkdir(dirname(tmuxEventLogFile), { recursive: true });
       await writeFile(tmuxPane.logFile, "", "utf-8");
