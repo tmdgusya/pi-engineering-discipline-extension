@@ -58,6 +58,83 @@ function runCommand(commandRunner: TmuxCommandRunner, file: string, args: readon
   });
 }
 
+const TMUX_NO_UNDERLINE_STYLE_FLAGS = [
+  "nounderscore",
+  "nodouble-underscore",
+  "nocurly-underscore",
+  "nodotted-underscore",
+  "nodashed-underscore",
+] as const;
+
+const TMUX_COPY_MODE_STYLE_OPTIONS = ["mode-style", "copy-mode-selection-style"] as const;
+
+export function appendNoUnderlineStyleFlags(style: string): string {
+  const tokens = style
+    .split(/[,\s]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+  for (const flag of TMUX_NO_UNDERLINE_STYLE_FLAGS) {
+    if (!tokens.includes(flag)) tokens.push(flag);
+  }
+  return tokens.join(",");
+}
+
+async function sanitizeTmuxStyleOption(
+  commandRunner: TmuxCommandRunner,
+  binary: string,
+  sessionTarget: string,
+  optionName: string,
+): Promise<void> {
+  let current: string;
+  try {
+    const stdout = await runCommand(commandRunner, binary, ["show-options", "-gv", "-t", sessionTarget, optionName]);
+    current = stdout.trim();
+  } catch {
+    return;
+  }
+  if (current === "") return;
+  const sanitized = appendNoUnderlineStyleFlags(current);
+  if (sanitized === current) return;
+  try {
+    await runCommand(commandRunner, binary, ["set-option", "-t", sessionTarget, optionName, sanitized]);
+  } catch {
+    // best-effort: never block pane creation on style cosmetics
+  }
+}
+
+export async function mitigateCopyModeUnderlineArtifacts(
+  commandRunner: TmuxCommandRunner,
+  binary: string,
+  sessionTarget: string,
+): Promise<void> {
+  const target = sessionTarget.trim();
+  if (target === "") return;
+  for (const optionName of TMUX_COPY_MODE_STYLE_OPTIONS) {
+    await sanitizeTmuxStyleOption(commandRunner, binary, target, optionName);
+  }
+}
+
+export async function enableMouseScrolling(
+  commandRunner: TmuxCommandRunner,
+  binary: string,
+  sessionTarget: string,
+): Promise<void> {
+  const target = sessionTarget.trim();
+  if (target === "") return;
+  try {
+    await runCommand(commandRunner, binary, ["set-option", "-t", target, "mouse", "on"]);
+  } catch {
+    // If we cannot even enable mouse, skip the rest — there is nothing to mitigate.
+    return;
+  }
+  try {
+    await runCommand(commandRunner, binary, ["set-option", "-t", target, "set-clipboard", "on"]);
+  } catch {
+    // best-effort: OSC 52 is a nice-to-have, do not abort underline mitigation
+  }
+  await mitigateCopyModeUnderlineArtifacts(commandRunner, binary, target);
+}
+
 export function parseTmuxAvailability(stdout: string): TmuxAvailability {
   const binary = stdout
     .split(/\r?\n/)

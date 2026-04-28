@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  appendNoUnderlineStyleFlags,
   buildAttachCommand,
   buildTmuxSessionName,
   createWorkerPanes,
   detectTmux,
+  enableMouseScrolling,
   killTmuxPane,
   killTmuxSession,
   parsePaneIds,
@@ -187,6 +189,98 @@ describe("tmux helpers", () => {
     expect(calls).toEqual([
       { file: "tmux", args: ["kill-session", "-t", "pi-team-demo"] },
       { file: "tmux", args: ["kill-pane", "-t", "%11"] },
+    ]);
+  });
+});
+
+describe("appendNoUnderlineStyleFlags", () => {
+  it("appends every missing no-underline flag to a non-empty style", () => {
+    expect(appendNoUnderlineStyleFlags("fg=colour231,bg=colour24,bold")).toBe(
+      "fg=colour231,bg=colour24,bold,nounderscore,nodouble-underscore,nocurly-underscore,nodotted-underscore,nodashed-underscore",
+    );
+  });
+
+  it("does not duplicate flags that are already present", () => {
+    expect(appendNoUnderlineStyleFlags("fg=colour231,nounderscore,bold")).toBe(
+      "fg=colour231,nounderscore,bold,nodouble-underscore,nocurly-underscore,nodotted-underscore,nodashed-underscore",
+    );
+  });
+
+  it("normalizes whitespace-separated tokens", () => {
+    expect(appendNoUnderlineStyleFlags("fg=colour231 bold")).toBe(
+      "fg=colour231,bold,nounderscore,nodouble-underscore,nocurly-underscore,nodotted-underscore,nodashed-underscore",
+    );
+  });
+});
+
+describe("enableMouseScrolling", () => {
+  it("issues mouse on, set-clipboard on, and underline-mitigation queries against the session target", async () => {
+    const { runner, calls } = createMockRunner(["", "", "", ""]);
+
+    await enableMouseScrolling(runner, "tmux", "pi-team-demo");
+
+    expect(calls).toEqual([
+      { file: "tmux", args: ["set-option", "-t", "pi-team-demo", "mouse", "on"] },
+      { file: "tmux", args: ["set-option", "-t", "pi-team-demo", "set-clipboard", "on"] },
+      { file: "tmux", args: ["show-options", "-gv", "-t", "pi-team-demo", "mode-style"] },
+      { file: "tmux", args: ["show-options", "-gv", "-t", "pi-team-demo", "copy-mode-selection-style"] },
+    ]);
+  });
+
+  it("rewrites style options with no-underline flags when the global value is non-empty", async () => {
+    const { runner, calls } = createMockRunner([
+      "", // set-option mouse on
+      "", // set-option set-clipboard on
+      "fg=colour231,bg=colour24,bold\n", // show-options mode-style
+      "", // set-option mode-style sanitized
+      "fg=colour231,nounderscore\n", // show-options copy-mode-selection-style
+      "", // set-option copy-mode-selection-style sanitized
+    ]);
+
+    await enableMouseScrolling(runner, "tmux", "pi-team-demo");
+
+    expect(calls).toEqual([
+      { file: "tmux", args: ["set-option", "-t", "pi-team-demo", "mouse", "on"] },
+      { file: "tmux", args: ["set-option", "-t", "pi-team-demo", "set-clipboard", "on"] },
+      { file: "tmux", args: ["show-options", "-gv", "-t", "pi-team-demo", "mode-style"] },
+      {
+        file: "tmux",
+        args: [
+          "set-option",
+          "-t",
+          "pi-team-demo",
+          "mode-style",
+          "fg=colour231,bg=colour24,bold,nounderscore,nodouble-underscore,nocurly-underscore,nodotted-underscore,nodashed-underscore",
+        ],
+      },
+      { file: "tmux", args: ["show-options", "-gv", "-t", "pi-team-demo", "copy-mode-selection-style"] },
+      {
+        file: "tmux",
+        args: [
+          "set-option",
+          "-t",
+          "pi-team-demo",
+          "copy-mode-selection-style",
+          "fg=colour231,nounderscore,nodouble-underscore,nocurly-underscore,nodotted-underscore,nodashed-underscore",
+        ],
+      },
+    ]);
+  });
+
+  it("ignores set-option failures so pane creation still proceeds", async () => {
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const runner: TmuxCommandRunner = (file, args, _options, callback) => {
+      calls.push({ file, args: [...args] });
+      if (args[0] === "set-option" && args[3] === "mouse") {
+        callback(new Error("server not available"), "", "server not available");
+        return;
+      }
+      callback(null, "", "");
+    };
+
+    await expect(enableMouseScrolling(runner, "tmux", "pi-team-demo")).resolves.toBeUndefined();
+    expect(calls).toEqual([
+      { file: "tmux", args: ["set-option", "-t", "pi-team-demo", "mouse", "on"] },
     ]);
   });
 });
