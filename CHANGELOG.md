@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.13.1](https://github.com/tmdgusya/roach-pi/compare/v1.13.0...v1.13.1) (2026-04-28)
+
+### Bug Fixes
+
+* track plan progress during subagent execution ([06975f2](https://github.com/tmdgusya/roach-pi/commit/06975f2368beaa7de4f7932301b5721adb9b339e))
+
+### Documentation
+
+* add plan tracker audit artifacts ([e8f69e4](https://github.com/tmdgusya/roach-pi/commit/e8f69e4317a449db0a3bd75b2d0937bc12f267e1))
+
 ## [1.13.0](https://github.com/tmdgusya/roach-pi/compare/v1.12.0...v1.13.0) (2026-04-28)
 
 ### Features
