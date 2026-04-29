@@ -1522,6 +1522,10 @@ export default function (pi: ExtensionAPI) {
       }
     },
     handler: async (args, ctx) => {
+      if (process.env[PI_ENABLE_TEAM_MODE_ENV] !== "1") {
+        ctx.ui.notify("team mode is disabled. Set PI_ENABLE_TEAM_MODE=1 to enable.", "error");
+        return;
+      }
       const parsed = parseTeamArgs(args ?? "");
       const isFollowUp = isTeamFollowUpCommand(parsed);
       if (!parsed.goal && !isFollowUp) {
