@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.14.1](https://github.com/tmdgusya/roach-pi/compare/v1.14.0...v1.14.1) (2026-04-29)
+
+### Bug Fixes
+
+* **agentic-harness:** harden plan progress footer ([de5621e](https://github.com/tmdgusya/roach-pi/commit/de5621ec92a7797c3024b10bfc6d9fe8211338f8))
+* **agentic-harness:** notify plan progress changes ([121fb57](https://github.com/tmdgusya/roach-pi/commit/121fb5704ed115eb758386564cec98f11590f257))
+* **agentic-harness:** refresh plan progress footer ([6e0d6dd](https://github.com/tmdgusya/roach-pi/commit/6e0d6dd350e7dff3610d25a9850d0924fe63fb9e))
+* **agentic-harness:** wire plan progress render requests ([34ef50f](https://github.com/tmdgusya/roach-pi/commit/34ef50f4896fac77d9cd8b86d8e906f78c55a97a))
+
+### Documentation
+
+* add plan progress tracker repair plan ([b3940a9](https://github.com/tmdgusya/roach-pi/commit/b3940a9b802c406874e76770a616d0702d9d2e99))
+
 ## [1.14.0](https://github.com/tmdgusya/roach-pi/compare/v1.13.1...v1.14.0) (2026-04-29)
 
 ### Features
