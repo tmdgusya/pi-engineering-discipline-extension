@@ -1,4 +1,4 @@
-import type { Component } from "@mariozechner/pi-tui";
+import type { Component, TUI } from "@mariozechner/pi-tui";
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import type { ReadonlyFooterDataProvider } from "@mariozechner/pi-coding-agent";
 import { basename } from "path";
@@ -41,6 +41,9 @@ export class RoachFooter implements Component {
   private cacheStats: CacheStats;
   private activeTools: ActiveTools;
   private planProgress: PlanProgressTracker | null;
+  private tui: Pick<TUI, "requestRender"> | null;
+  private spinnerTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly SPINNER_TICK_MS = 400;
 
   constructor(
     theme: Theme,
@@ -49,6 +52,7 @@ export class RoachFooter implements Component {
     cacheStats: CacheStats,
     activeTools: ActiveTools,
     planProgress: PlanProgressTracker | null = null,
+    tui: Pick<TUI, "requestRender"> | null = null,
   ) {
     this.theme = theme;
     this.footerData = footerData;
@@ -56,11 +60,51 @@ export class RoachFooter implements Component {
     this.cacheStats = cacheStats;
     this.activeTools = activeTools;
     this.planProgress = planProgress;
+    this.tui = tui;
+    this.planProgress?.setOnChange(() => {
+      this.schedulePlanRender();
+    });
+    this.updateSpinnerTimer();
   }
 
-  invalidate(): void {}
+  invalidate(): void {
+    this.schedulePlanRender();
+  }
+
+  dispose(): void {
+    if (this.spinnerTimer) {
+      clearInterval(this.spinnerTimer);
+      this.spinnerTimer = null;
+    }
+    this.planProgress?.setOnChange(null);
+  }
+
+  private schedulePlanRender(): void {
+    this.updateSpinnerTimer();
+    this.tui?.requestRender(true);
+  }
+
+  private updateSpinnerTimer(): void {
+    const hasRunningTask = (this.planProgress?.getProgress().running ?? 0) > 0;
+    if (hasRunningTask && !this.spinnerTimer) {
+      this.spinnerTimer = setInterval(() => {
+        if ((this.planProgress?.getProgress().running ?? 0) === 0) {
+          this.updateSpinnerTimer();
+          return;
+        }
+        this.tui?.requestRender(true);
+      }, this.SPINNER_TICK_MS);
+      return;
+    }
+
+    if (!hasRunningTask && this.spinnerTimer) {
+      clearInterval(this.spinnerTimer);
+      this.spinnerTimer = null;
+    }
+  }
 
   render(width: number): string[] {
+    this.updateSpinnerTimer();
     const t = this.theme;
     const sep = t.fg("dim", " │ ");
 

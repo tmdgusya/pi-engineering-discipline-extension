@@ -281,6 +281,60 @@ describe("RoachFooter plan progress hosting", () => {
     expect(lines[3 + planLines.length]).toContain("ctx");
     expect(lines[3 + planLines.length]).toContain("cache 0%");
   });
+
+  it("requests a TUI render when tracked plan state changes", () => {
+    const tracker = loadSamplePlan();
+    const requestRender = vi.fn();
+    const footer = new RoachFooter(
+      stubTheme,
+      { getGitBranch: () => "main" } as any,
+      {
+        cwd: "/tmp/project",
+        getModelName: () => "test-model",
+        getContextUsage: () => ({ tokens: 1_000, contextWindow: 100_000, percent: 1 }),
+      },
+      { totalInput: 10, totalCacheRead: 0 },
+      { running: new Map() },
+      tracker,
+      { requestRender } as any,
+    );
+
+    tracker.startTask(1);
+
+    expect(requestRender).toHaveBeenCalledWith(true);
+    footer.dispose();
+  });
+
+  it("ticks while a plan task is running and stops after disposal", () => {
+    vi.useFakeTimers();
+    const tracker = loadSamplePlan();
+    const requestRender = vi.fn();
+    const footer = new RoachFooter(
+      stubTheme,
+      { getGitBranch: () => "main" } as any,
+      {
+        cwd: "/tmp/project",
+        getModelName: () => "test-model",
+        getContextUsage: () => ({ tokens: 1_000, contextWindow: 100_000, percent: 1 }),
+      },
+      { totalInput: 10, totalCacheRead: 0 },
+      { running: new Map() },
+      tracker,
+      { requestRender } as any,
+    );
+
+    tracker.startTask(1);
+    requestRender.mockClear();
+    vi.advanceTimersByTime(1_200);
+
+    expect(requestRender.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    footer.dispose();
+    requestRender.mockClear();
+    vi.advanceTimersByTime(1_200);
+
+    expect(requestRender).not.toHaveBeenCalled();
+  });
 });
 
 describe("PlanProgressTracker.render", () => {
