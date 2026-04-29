@@ -1634,12 +1634,12 @@ export default function (pi: ExtensionAPI) {
       return new Text(`\n${banner}\n${tagline}\n\n${tipLine}\n${clarifyLine}\n\n${hints}`, 1, 0);
     });
 
-    ctx.ui.setFooter((_tui, theme, footerData) => {
+    ctx.ui.setFooter((tui, theme, footerData) => {
       return new RoachFooter(theme, footerData, {
         cwd: ctx.cwd,
         getModelName: () => ctx.model?.name,
         getContextUsage: () => ctx.getContextUsage(),
-      }, cacheStats, activeTools, planProgress);
+      }, cacheStats, activeTools, planProgress, tui);
     });
 
     ctx.ui.notify(
