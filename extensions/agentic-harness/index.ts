@@ -26,7 +26,7 @@ import {
   startPlanSubagentTasks,
 } from "./plan-progress-events.js";
 import { fetchUrlToMarkdown } from "./webfetch/utils.js";
-import { PI_TEAM_WORKER_ENV, cleanupActiveTeamTmuxResources, formatTeamRunSummary, runTeam, type TeamBackend, type TeamRunSummary } from "./team.js";
+import { PI_ENABLE_TEAM_MODE_ENV, PI_TEAM_WORKER_ENV, cleanupActiveTeamTmuxResources, formatTeamRunSummary, runTeam, type TeamBackend, type TeamRunSummary } from "./team.js";
 import { defaultTeamRunStateRoot, listTeamRuns, readTeamRunRecord, writeTeamRunRecord, type StaleTaskResumeMode } from "./team-state.js";
 import { buildTeamCommandPrompt, getTeamArgumentCompletions, isTeamFollowUpCommand, parseTeamArgs } from "./team-command.js";
 import { renderWebfetchCall, renderWebfetchResult } from "./webfetch/render.js";
@@ -81,6 +81,7 @@ export default function (pi: ExtensionAPI) {
   const depthConfig = resolveDepthConfig();
   const isRootSession = depthConfig.currentDepth === 0;
   const isTeamWorker = process.env[PI_TEAM_WORKER_ENV] === "1";
+  const isTeamModeEnabled = process.env[PI_ENABLE_TEAM_MODE_ENV] === "1";
   const parsedApprovalMode = parseSandboxApprovalMode(process.env.PI_SANDBOX_APPROVAL_MODE);
   let warnedInvalidApprovalMode = false;
   let announcedAlwaysApprovalMode = false;
@@ -320,7 +321,7 @@ export default function (pi: ExtensionAPI) {
     commandMessage: Type.Optional(Type.String({ description: "Follow-up mode command message to enqueue for the target" })),
   });
 
-  if (isRootSession && !isTeamWorker) {
+  if (isRootSession && !isTeamWorker && isTeamModeEnabled) {
     pi.registerTool({
       name: "team",
       label: "Team",
@@ -1521,6 +1522,10 @@ export default function (pi: ExtensionAPI) {
       }
     },
     handler: async (args, ctx) => {
+      if (process.env[PI_ENABLE_TEAM_MODE_ENV] !== "1") {
+        ctx.ui.notify("team mode is disabled. Set PI_ENABLE_TEAM_MODE=1 to enable.", "error");
+        return;
+      }
       const parsed = parseTeamArgs(args ?? "");
       const isFollowUp = isTeamFollowUpCommand(parsed);
       if (!parsed.goal && !isFollowUp) {

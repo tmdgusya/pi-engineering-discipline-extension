@@ -32,6 +32,7 @@ const originalSubagentEnv = {
   PI_SUBAGENT_STACK: process.env.PI_SUBAGENT_STACK,
   PI_SUBAGENT_PREVENT_CYCLES: process.env.PI_SUBAGENT_PREVENT_CYCLES,
   PI_TEAM_WORKER: process.env.PI_TEAM_WORKER,
+  PI_ENABLE_TEAM_MODE: process.env.PI_ENABLE_TEAM_MODE,
 };
 
 beforeEach(() => {
@@ -40,6 +41,7 @@ beforeEach(() => {
   delete process.env.PI_SUBAGENT_STACK;
   delete process.env.PI_SUBAGENT_PREVENT_CYCLES;
   delete process.env.PI_TEAM_WORKER;
+  process.env.PI_ENABLE_TEAM_MODE = "1";
 });
 
 afterAll(() => {
@@ -209,6 +211,32 @@ describe("Extension Registration", () => {
 
     expect(tools.get("team")).toBeUndefined();
     expect(tools.get("subagent")).toBeUndefined();
+  });
+
+  it("should NOT register team tool when PI_ENABLE_TEAM_MODE is unset", () => {
+    const prev = process.env.PI_ENABLE_TEAM_MODE;
+    delete process.env.PI_ENABLE_TEAM_MODE;
+    try {
+      const { mockPi, tools } = createMockPi();
+      extension(mockPi);
+      expect(tools.get("team")).toBeUndefined();
+    } finally {
+      if (prev === undefined) delete process.env.PI_ENABLE_TEAM_MODE;
+      else process.env.PI_ENABLE_TEAM_MODE = prev;
+    }
+  });
+
+  it("should NOT register team tool when PI_ENABLE_TEAM_MODE is a non-\"1\" value", () => {
+    const prev = process.env.PI_ENABLE_TEAM_MODE;
+    process.env.PI_ENABLE_TEAM_MODE = "true";
+    try {
+      const { mockPi, tools } = createMockPi();
+      extension(mockPi);
+      expect(tools.get("team")).toBeUndefined();
+    } finally {
+      if (prev === undefined) delete process.env.PI_ENABLE_TEAM_MODE;
+      else process.env.PI_ENABLE_TEAM_MODE = prev;
+    }
   });
 
   it("should register all root-session commands", () => {

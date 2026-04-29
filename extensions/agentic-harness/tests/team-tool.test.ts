@@ -29,6 +29,7 @@ const teamMock = vi.hoisted(() => ({
   cleanupActiveTeamTmuxResources: vi.fn(async () => undefined),
   formatTeamRunSummary: vi.fn((s: TeamRunSummary) => `synthesis:${s.success ? "ok" : "fail"}`),
   PI_TEAM_WORKER_ENV: "PI_TEAM_WORKER",
+  PI_ENABLE_TEAM_MODE_ENV: "PI_ENABLE_TEAM_MODE",
 }));
 
 vi.mock("../team.js", () => teamMock);
@@ -38,11 +39,13 @@ import extension from "../index.js";
 const originalEnv = {
   PI_SUBAGENT_DEPTH: process.env.PI_SUBAGENT_DEPTH,
   PI_TEAM_WORKER: process.env.PI_TEAM_WORKER,
+  PI_ENABLE_TEAM_MODE: process.env.PI_ENABLE_TEAM_MODE,
 };
 
 beforeEach(() => {
   delete process.env.PI_SUBAGENT_DEPTH;
   delete process.env.PI_TEAM_WORKER;
+  process.env.PI_ENABLE_TEAM_MODE = "1";
   teamMock.runTeam.mockReset();
   teamMock.cleanupActiveTeamTmuxResources.mockClear();
 });
@@ -212,5 +215,34 @@ describe("/team command registration", () => {
     expect(sent).toContain('goal="ship the API client"');
     expect(sent).toContain('agent="worker"');
     expect(sent).toContain('backend="native"');
+  });
+
+  it("handler shows guidance and does not send a message when PI_ENABLE_TEAM_MODE is unset", async () => {
+    delete process.env.PI_ENABLE_TEAM_MODE;
+    const { mockPi, commands } = createMockPi();
+    extension(mockPi);
+    const cmd = commands.get("team");
+    const ctx = makeCtx();
+    await cmd.handler('goal="ship the API client"', ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("team mode is disabled"),
+      "error",
+    );
+    expect(ctx.ui.confirm).not.toHaveBeenCalled();
+    expect(mockPi.sendUserMessage).not.toHaveBeenCalled();
+  });
+
+  it("handler shows guidance when PI_ENABLE_TEAM_MODE is a non-\"1\" value", async () => {
+    process.env.PI_ENABLE_TEAM_MODE = "true";
+    const { mockPi, commands } = createMockPi();
+    extension(mockPi);
+    const cmd = commands.get("team");
+    const ctx = makeCtx();
+    await cmd.handler('goal="x"', ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("team mode is disabled"),
+      "error",
+    );
+    expect(mockPi.sendUserMessage).not.toHaveBeenCalled();
   });
 });

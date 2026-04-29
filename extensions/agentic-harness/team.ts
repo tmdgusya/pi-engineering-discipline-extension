@@ -23,6 +23,7 @@ import {
 } from "./team-state.js";
 
 export const PI_TEAM_WORKER_ENV = "PI_TEAM_WORKER";
+export const PI_ENABLE_TEAM_MODE_ENV = "PI_ENABLE_TEAM_MODE";
 
 export type TeamTaskStatus = "pending" | "in_progress" | "completed" | "failed" | "blocked" | "interrupted";
 export type TeamBackend = "auto" | "native" | "tmux";
