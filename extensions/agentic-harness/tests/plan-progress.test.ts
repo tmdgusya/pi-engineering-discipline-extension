@@ -185,6 +185,35 @@ describe("PlanProgressTracker lifecycle", () => {
       "pending",
     ]);
   });
+
+  it("notifies subscribers when plan-visible state changes", () => {
+    const tracker = new PlanProgressTracker();
+    const onChange = vi.fn();
+
+    tracker.setOnChange(onChange);
+    tracker.loadPlan(SAMPLE_PLAN);
+    tracker.startTask(1);
+    tracker.completeTask(1, true);
+    tracker.clear();
+
+    expect(onChange).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not notify subscribers for ignored duplicate transitions", () => {
+    const tracker = loadSamplePlan();
+    const onChange = vi.fn();
+
+    tracker.setOnChange(onChange);
+    tracker.startTask(1);
+    tracker.startTask(1);
+    tracker.completeTask(2, true);
+    tracker.completeTask(1, true);
+    tracker.completeTask(1, false);
+
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(taskOf(tracker, 1).status).toBe("completed");
+    expect(taskOf(tracker, 2).status).toBe("pending");
+  });
 });
 
 describe("PlanProgressTracker fuzzy task matching", () => {

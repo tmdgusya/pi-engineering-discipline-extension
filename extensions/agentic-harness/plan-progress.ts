@@ -74,6 +74,7 @@ export class PlanProgressTracker {
   private currentSpinnerFrame = 0;
   private spinnerFrames = ["◐", "◓", "◑", "◒"];
   private lastSpinnerUpdate = 0;
+  private onChange: (() => void) | null = null;
   private readonly SPINNER_INTERVAL_MS = 400;
 
   loadPlan(markdown: string): void {
@@ -84,11 +85,22 @@ export class PlanProgressTracker {
     }));
     this.currentSpinnerFrame = 0;
     this.lastSpinnerUpdate = Date.now();
+    this.notifyChanged();
   }
 
   clear(): void {
+    const hadPlan = this.hasPlan();
     this.plan = null;
     this.tasks = [];
+    if (hadPlan) this.notifyChanged();
+  }
+
+  setOnChange(listener: (() => void) | null): void {
+    this.onChange = listener;
+  }
+
+  private notifyChanged(): void {
+    this.onChange?.();
   }
 
   hasPlan(): boolean {
@@ -104,6 +116,7 @@ export class PlanProgressTracker {
     if (task?.status === "pending") {
       task.status = "running";
       task.startedAt = Date.now();
+      this.notifyChanged();
     }
   }
 
@@ -119,6 +132,7 @@ export class PlanProgressTracker {
       ) {
         task.status = "running";
         task.startedAt = Date.now();
+        this.notifyChanged();
         return task.id;
       }
     }
@@ -130,6 +144,7 @@ export class PlanProgressTracker {
     if (task?.status === "running") {
       task.status = success ? "completed" : "failed";
       task.completedAt = Date.now();
+      this.notifyChanged();
     }
   }
 
@@ -145,6 +160,7 @@ export class PlanProgressTracker {
       ) {
         task.status = success ? "completed" : "failed";
         task.completedAt = Date.now();
+        this.notifyChanged();
         return task.id;
       }
     }
