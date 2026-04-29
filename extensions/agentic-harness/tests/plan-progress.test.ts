@@ -332,8 +332,72 @@ describe("RoachFooter plan progress hosting", () => {
     footer.dispose();
     requestRender.mockClear();
     vi.advanceTimersByTime(1_200);
+    tracker.completeTask(1, true);
 
     expect(requestRender).not.toHaveBeenCalled();
+  });
+
+  it("stops spinner ticks when the last running task completes", () => {
+    vi.useFakeTimers();
+    const tracker = loadSamplePlan();
+    const requestRender = vi.fn();
+    const footer = new RoachFooter(
+      stubTheme,
+      { getGitBranch: () => "main" } as any,
+      {
+        cwd: "/tmp/project",
+        getModelName: () => "test-model",
+        getContextUsage: () => ({ tokens: 1_000, contextWindow: 100_000, percent: 1 }),
+      },
+      { totalInput: 10, totalCacheRead: 0 },
+      { running: new Map() },
+      tracker,
+      { requestRender } as any,
+    );
+
+    tracker.startTask(1);
+    vi.advanceTimersByTime(800);
+    expect(requestRender.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    tracker.completeTask(1, true);
+    requestRender.mockClear();
+    vi.advanceTimersByTime(1_200);
+
+    expect(requestRender).not.toHaveBeenCalled();
+    footer.dispose();
+  });
+
+  it("keeps active footer subscriptions when another footer is disposed", () => {
+    const tracker = loadSamplePlan();
+    const firstRender = vi.fn();
+    const secondRender = vi.fn();
+    const footerArgs = [
+      stubTheme,
+      { getGitBranch: () => "main" } as any,
+      {
+        cwd: "/tmp/project",
+        getModelName: () => "test-model",
+        getContextUsage: () => ({ tokens: 1_000, contextWindow: 100_000, percent: 1 }),
+      },
+      { totalInput: 10, totalCacheRead: 0 },
+      { running: new Map() },
+      tracker,
+    ] as const;
+    const firstFooter = new RoachFooter(...footerArgs, { requestRender: firstRender } as any);
+    const secondFooter = new RoachFooter(...footerArgs, { requestRender: secondRender } as any);
+
+    tracker.startTask(1);
+    expect(firstRender).toHaveBeenCalledWith(true);
+    expect(secondRender).toHaveBeenCalledWith(true);
+
+    firstFooter.dispose();
+    firstRender.mockClear();
+    secondRender.mockClear();
+    tracker.completeTask(1, true);
+
+    expect(firstRender).not.toHaveBeenCalled();
+    expect(secondRender).toHaveBeenCalledWith(true);
+    secondFooter.dispose();
   });
 });
 
@@ -365,16 +429,18 @@ describe("PlanProgressTracker.render", () => {
     expect(text).toContain("1 running");
   });
 
-  it("never produces a line wider than maxWidth, even with a long goal", () => {
+  it("never produces a line wider than maxWidth, even with long text", () => {
     const tracker = new PlanProgressTracker();
-    tracker.loadPlan(planMarkdown(LONG_GOAL));
+    tracker.loadPlan(planMarkdown(LONG_GOAL, LONG_GOAL));
+    tracker.startTask(1);
 
-    const maxWidth = 176;
-    const lines = tracker.render(stubTheme, maxWidth);
+    for (const maxWidth of [1, 2, 3, 4, 8, 12, 176]) {
+      const lines = tracker.render(stubTheme, maxWidth);
 
-    expect(lines.length).toBeGreaterThan(0);
-    for (const line of lines) {
-      expect(visibleWidth(line)).toBeLessThanOrEqual(maxWidth);
+      expect(lines.length).toBeGreaterThan(0);
+      for (const line of lines) {
+        expect(visibleWidth(line)).toBeLessThanOrEqual(maxWidth);
+      }
     }
   });
 

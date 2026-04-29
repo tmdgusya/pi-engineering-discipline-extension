@@ -10,6 +10,10 @@ export interface TrackedTask extends PlanTask {
   completedAt?: number;
 }
 
+export const PLAN_PROGRESS_SPINNER_MS = 400;
+
+type PlanProgressChangeListener = () => void;
+
 const STOP_WORDS = new Set([
   "a",
   "an",
@@ -74,8 +78,8 @@ export class PlanProgressTracker {
   private currentSpinnerFrame = 0;
   private spinnerFrames = ["◐", "◓", "◑", "◒"];
   private lastSpinnerUpdate = 0;
-  private onChange: (() => void) | null = null;
-  private readonly SPINNER_INTERVAL_MS = 400;
+  private changeListeners = new Set<PlanProgressChangeListener>();
+  private readonly SPINNER_INTERVAL_MS = PLAN_PROGRESS_SPINNER_MS;
 
   loadPlan(markdown: string): void {
     this.plan = parsePlan(markdown);
@@ -95,12 +99,20 @@ export class PlanProgressTracker {
     if (hadPlan) this.notifyChanged();
   }
 
-  setOnChange(listener: (() => void) | null): void {
-    this.onChange = listener;
+  setOnChange(listener: PlanProgressChangeListener | null): void {
+    this.changeListeners.clear();
+    if (listener) this.changeListeners.add(listener);
+  }
+
+  subscribeOnChange(listener: PlanProgressChangeListener): () => void {
+    this.changeListeners.add(listener);
+    return () => {
+      this.changeListeners.delete(listener);
+    };
   }
 
   private notifyChanged(): void {
-    this.onChange?.();
+    for (const listener of [...this.changeListeners]) listener();
   }
 
   hasPlan(): boolean {
@@ -194,16 +206,20 @@ export class PlanProgressTracker {
   render(theme: Theme, maxWidth: number): string[] {
     if (!this.hasPlan()) return [];
 
+    const width = Math.max(0, maxWidth);
+    if (width === 0) return [];
+
     const t = theme;
     const lines: string[] = [];
+    const clampLine = (line: string) => truncateToWidth(line, width);
 
     const goal = this.getGoal();
-    const headerText = truncateToWidth(goal ? `▸ ${goal}` : "▸ Plan", maxWidth);
-    lines.push(t.fg("accent", t.bold(headerText)));
+    const headerText = truncateToWidth(goal ? `▸ ${goal}` : "▸ Plan", width);
+    lines.push(clampLine(t.fg("accent", t.bold(headerText))));
 
     const { completed, total, failed, running } = this.getProgress();
     const pct = Math.round((completed / total) * 100);
-    const barWidth = Math.min(12, Math.max(6, Math.floor(maxWidth / 8)));
+    const barWidth = Math.min(12, Math.max(1, Math.floor(width / 8)));
     const filled = Math.round((pct / 100) * barWidth);
     const bar =
       t.fg("success", "█".repeat(filled)) +
@@ -213,7 +229,7 @@ export class PlanProgressTracker {
     parts.push(`${bar} ${t.fg("dim", `${completed}/${total}`)}`);
     if (failed > 0) parts.push(t.fg("error", `${failed} failed`));
     if (running > 0) parts.push(t.fg("warning", `${running} running`));
-    lines.push("  " + parts.join(t.fg("dim", " │ ")));
+    lines.push(clampLine("  " + parts.join(t.fg("dim", " │ "))));
 
     for (const task of this.tasks) {
       let icon: string;
@@ -237,12 +253,10 @@ export class PlanProgressTracker {
           color = "dim";
       }
 
-      const name = task.name.length > maxWidth - 6
-        ? task.name.slice(0, maxWidth - 9) + "..."
-        : task.name;
       const textColor: Parameters<Theme["fg"]>[0] = color === "dim" ? "dim" : "toolOutput";
+      const name = truncateToWidth(task.name, Math.max(0, width - 4));
       const taskLine = `${t.fg(color, icon)} ${t.fg(textColor, name)}`;
-      lines.push(`  ${taskLine}`);
+      lines.push(clampLine(`  ${taskLine}`));
     }
 
     return lines;

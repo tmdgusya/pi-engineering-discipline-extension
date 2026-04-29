@@ -2,7 +2,7 @@ import type { Component, TUI } from "@mariozechner/pi-tui";
 import type { Theme } from "@mariozechner/pi-coding-agent";
 import type { ReadonlyFooterDataProvider } from "@mariozechner/pi-coding-agent";
 import { basename } from "path";
-import type { PlanProgressTracker } from "./plan-progress.js";
+import { PLAN_PROGRESS_SPINNER_MS, type PlanProgressTracker } from "./plan-progress.js";
 
 export interface FooterContext {
   cwd: string;
@@ -42,8 +42,8 @@ export class RoachFooter implements Component {
   private activeTools: ActiveTools;
   private planProgress: PlanProgressTracker | null;
   private tui: Pick<TUI, "requestRender"> | null;
+  private unsubscribePlanProgress: (() => void) | null = null;
   private spinnerTimer: ReturnType<typeof setInterval> | null = null;
-  private readonly SPINNER_TICK_MS = 400;
 
   constructor(
     theme: Theme,
@@ -61,9 +61,9 @@ export class RoachFooter implements Component {
     this.activeTools = activeTools;
     this.planProgress = planProgress;
     this.tui = tui;
-    this.planProgress?.setOnChange(() => {
+    this.unsubscribePlanProgress = this.planProgress?.subscribeOnChange(() => {
       this.schedulePlanRender();
-    });
+    }) ?? null;
     this.updateSpinnerTimer();
   }
 
@@ -76,7 +76,8 @@ export class RoachFooter implements Component {
       clearInterval(this.spinnerTimer);
       this.spinnerTimer = null;
     }
-    this.planProgress?.setOnChange(null);
+    this.unsubscribePlanProgress?.();
+    this.unsubscribePlanProgress = null;
   }
 
   private schedulePlanRender(): void {
@@ -93,7 +94,7 @@ export class RoachFooter implements Component {
           return;
         }
         this.tui?.requestRender(true);
-      }, this.SPINNER_TICK_MS);
+      }, PLAN_PROGRESS_SPINNER_MS);
       return;
     }
 
