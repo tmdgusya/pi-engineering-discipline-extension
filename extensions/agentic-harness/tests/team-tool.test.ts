@@ -29,6 +29,7 @@ const teamMock = vi.hoisted(() => ({
   cleanupActiveTeamTmuxResources: vi.fn(async () => undefined),
   formatTeamRunSummary: vi.fn((s: TeamRunSummary) => `synthesis:${s.success ? "ok" : "fail"}`),
   PI_TEAM_WORKER_ENV: "PI_TEAM_WORKER",
+  PI_ENABLE_TEAM_MODE_ENV: "PI_ENABLE_TEAM_MODE",
 }));
 
 vi.mock("../team.js", () => teamMock);
