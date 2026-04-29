@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.14.0](https://github.com/tmdgusya/roach-pi/compare/v1.13.1...v1.14.0) (2026-04-29)
+
+### Features
+
+* add PI_ENABLE_TEAM_MODE_ENV constant for team mode gate ([5a6885e](https://github.com/tmdgusya/roach-pi/commit/5a6885e534cdda85bef125cac43f13759040e822))
+* gate /team slash command handler on PI_ENABLE_TEAM_MODE ([b81d542](https://github.com/tmdgusya/roach-pi/commit/b81d5425a07c6c310294b584d6b28aabf2aad0b5))
+* gate team tool registration on PI_ENABLE_TEAM_MODE ([cafa8d6](https://github.com/tmdgusya/roach-pi/commit/cafa8d664c60b809cc2966e3e80661acf1897051))
+
+### Documentation
+
+* add brief and plan for team mode feature flag ([1cfafdb](https://github.com/tmdgusya/roach-pi/commit/1cfafdb3df5cebca423fd584c2f0ae62d6202e95))
+* document PI_ENABLE_TEAM_MODE feature flag ([b5e73c8](https://github.com/tmdgusya/roach-pi/commit/b5e73c87490d84bf9c3800ef9dd482be7735fb24))
+
+### Tests
+
+* add failing tests for PI_ENABLE_TEAM_MODE gate ([ce41296](https://github.com/tmdgusya/roach-pi/commit/ce412963808b46042af893fbf4973536200b322e))
+* expose PI_ENABLE_TEAM_MODE_ENV in team.js mock ([03d1389](https://github.com/tmdgusya/roach-pi/commit/03d13899d83a4a03d5d6f3a125a0a69c2f2cd824))
+
 ## [1.13.1](https://github.com/tmdgusya/roach-pi/compare/v1.13.0...v1.13.1) (2026-04-28)
 
 ### Bug Fixes
