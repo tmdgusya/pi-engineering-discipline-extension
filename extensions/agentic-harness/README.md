@@ -58,6 +58,8 @@ The `ask_user_question` tool is also available to the agent at all times — it 
 
 ## Lightweight Native Team Mode
 
+> **Disabled by default.** Team mode is gated behind the `PI_ENABLE_TEAM_MODE` environment variable. Set `PI_ENABLE_TEAM_MODE=1` to enable both the LLM-callable `team` tool and the `/team` slash command. When unset, the `team` tool is not registered (hidden from the agent), and invoking `/team` returns the guidance message `team mode is disabled. Set PI_ENABLE_TEAM_MODE=1 to enable.` The `/team` command itself remains registered so it appears in completions and help output.
+
 The `team` tool coordinates a small, bounded batch of existing pi subagents from the root session. Use it when a goal can be split into independent worker assignments and you want one synthesized result with task lifecycle status and explicit verification evidence. Use `subagent` directly for one-off delegation when you do not need team task records, lifecycle status, or final synthesis.
 
 Example tool invocation shape:
@@ -109,7 +111,7 @@ Follow-up command mode uses the same `team` tool surface with `resumeRunId`, `co
 - The tmux backend runs the resolved sandbox command inside a tmux pane. Treat sandbox parity as tested for wrapper invocation, not as pane embedding isolation.
 - Operator interaction happens through the existing tmux client and pane controls; durable command state remains authoritative when pane wake-up/injection fails.
 - Dispatches workers through the selected backend and preserves normal subagent depth/cycle safeguards.
-- Runs team workers with `PI_TEAM_WORKER=1`, which suppresses recursive orchestration tools such as `team` and `subagent` inside workers.
+- Activated only when the root session has `PI_ENABLE_TEAM_MODE=1` (default off). Runs team workers with `PI_TEAM_WORKER=1`, which suppresses recursive orchestration tools such as `team` and `subagent` inside workers.
 - Returns a `TeamRunSummary` with stable user-facing fields: `goal`, `ok`/`success`, `completedCount`, `failedCount`, `tasks`, `finalSynthesis`, and `verificationEvidence`.
 - Keeps each task's status, owner, output summary, artifact references, and worktree references when present.
 - Persists durable run records under `.pi/agent/runs/<runId>/team-run.json`, including task lifecycle events, recorded inbox/outbox audit messages, and `commands[]` lifecycle records.
