@@ -22,7 +22,14 @@ const BANNER_LINES = [
   "╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝    ╚═╝     ╚═╝",
 ];
 
-const WELCOME_SHIMMER_FRAME_MS = 80;
+// Slowed down from the original 80ms to reduce per-frame redraw pressure
+// (see issue #56 — severe screen flickering on default terminals).
+// The frame interval drives the shimmer phase tick; the separate heartbeat
+// keeps a persistent (but cheap) requestRender cadence independent of the
+// animation tick so the UI still refreshes even when the shimmer phase
+// would otherwise skip a frame.
+const WELCOME_SHIMMER_FRAME_MS = 500;
+const WELCOME_RENDER_HEARTBEAT_MS = 1200;
 const WELCOME_SHIMMER_PHASE_OFFSET_MS = 350;
 
 const ANSI_RESET = "\x1b[0m";
@@ -92,6 +99,7 @@ function canRenderShimmer(theme: WelcomeTheme): theme is Theme {
 
 class WelcomeHeaderComponent implements Component {
   private timer: ReturnType<typeof setInterval> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private animating: boolean;
   private readonly startedAt = Date.now();
 
@@ -100,6 +108,8 @@ class WelcomeHeaderComponent implements Component {
     if (this.animating) {
       this.timer = setInterval(() => this.tick(), WELCOME_SHIMMER_FRAME_MS);
       this.timer.unref?.();
+      this.heartbeatTimer = setInterval(() => this.tick(), WELCOME_RENDER_HEARTBEAT_MS);
+      this.heartbeatTimer.unref?.();
     }
   }
 
@@ -119,9 +129,14 @@ class WelcomeHeaderComponent implements Component {
   }
 
   private stopTimer(): void {
-    if (!this.timer) return;
-    clearInterval(this.timer);
-    this.timer = null;
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
   }
 
   private content(): string {

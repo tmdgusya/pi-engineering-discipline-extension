@@ -74,7 +74,7 @@ describe("welcome header controller", () => {
     expect(laterRender).toContain("Engineering Discipline Extension");
   });
 
-  it("clears the shimmer timer on dispose", () => {
+  it("clears the shimmer and heartbeat timers on dispose", () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
     const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval");
@@ -82,10 +82,72 @@ describe("welcome header controller", () => {
 
     const component = createWelcomeHeader()({ requestRender } as any, shimmerTheme);
     component.dispose?.();
-    vi.advanceTimersByTime(80);
+    // Advance past both tick intervals (500ms frame + 1200ms heartbeat).
+    // If either timer survived dispose, requestRender would fire here.
+    vi.advanceTimersByTime(1500);
 
-    expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
+    expect(clearIntervalSpy).toHaveBeenCalledTimes(2);
     expect(requestRender).not.toHaveBeenCalled();
+  });
+
+  it("fires requestRender on the 500ms frame interval", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const requestRender = vi.fn();
+
+    const component = createWelcomeHeader()({ requestRender } as any, shimmerTheme);
+    expect(requestRender).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(499);
+    expect(requestRender).toHaveBeenCalledTimes(0);
+
+    vi.advanceTimersByTime(1); // total 500ms — first frame tick
+    expect(requestRender).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(500); // total 1000ms — second frame tick
+    expect(requestRender).toHaveBeenCalledTimes(2);
+
+    component.dispose?.();
+  });
+
+  it("fires requestRender on the 1200ms heartbeat interval", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const requestRender = vi.fn();
+
+    const component = createWelcomeHeader()({ requestRender } as any, shimmerTheme);
+
+    vi.advanceTimersByTime(1199); // just before the heartbeat fires
+    // Frame timer fires at 500 and 1000 (2x); heartbeat has not fired yet.
+    expect(requestRender).toHaveBeenCalledTimes(2);
+
+    vi.advanceTimersByTime(1); // total 1200ms — heartbeat fires once
+    expect(requestRender).toHaveBeenCalledTimes(3);
+
+    // Advance from 1200ms to 2399ms — heartbeat has not fired again yet,
+    // but the frame timer ticks at 1500, 2000 (2 more calls).
+    vi.advanceTimersByTime(1199);
+    expect(requestRender).toHaveBeenCalledTimes(5);
+
+    vi.advanceTimersByTime(1); // total 2400ms — second heartbeat fires
+    expect(requestRender).toHaveBeenCalledTimes(6);
+
+    component.dispose?.();
+  });
+
+  it("does not start any timers when the theme cannot render shimmer", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval");
+    const requestRender = vi.fn();
+
+    const component = createWelcomeHeader()({ requestRender } as any, theme);
+
+    expect(setIntervalSpy).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(2000);
+    expect(requestRender).not.toHaveBeenCalled();
+
+    component.dispose?.();
   });
 
   it("shows, dismisses, and toggles the header", () => {
